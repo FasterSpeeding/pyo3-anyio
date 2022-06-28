@@ -1,0 +1,20 @@
+[package]
+name = "pyo3-anyio"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-oneshot = "0.5.0"
+
+[dependencies.pyo3]
+version = "0.16.*"
+
+[dependencies.tokio]
+features = ["rt-multi-thread"]
+version = "1.19.2"
+
+[dependencies.uuid]
+features = ["v4"]
+version = "1.1.2"
