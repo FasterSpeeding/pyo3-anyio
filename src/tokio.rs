@@ -32,6 +32,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::LazyLock;
 
+use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
+
 use crate::traits::PyLoop;
 
 tokio::task_local! {
@@ -75,4 +77,17 @@ impl crate::traits::RustRuntime for Tokio {
     ) -> Pin<Box<dyn Future<Output = R>>> {
         Box::pin(PY_RUNTIME.scope(loop_, fut))
     }
+}
+
+pub fn future_into_py<T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static) -> PyResult<&PyAny>
+where
+    T: IntoPy<PyObject>, {
+    crate::any::future_into_py::<Tokio, _>(py, fut)
+}
+
+pub fn into_future(
+    py: Python<'_>,
+    coroutine: &PyAny,
+) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+    crate::any::into_future::<Tokio>(py, coroutine)
 }
