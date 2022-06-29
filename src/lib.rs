@@ -35,7 +35,7 @@
 #![feature(trait_alias)]
 
 use pyo3::types::{PyDict, PyTuple};
-use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
+use pyo3::{IntoPy, PyObject, PyResult, Python};
 
 mod any;
 mod asyncio;
@@ -44,18 +44,20 @@ pub mod traits;
 mod trio;
 
 #[pyo3::pyclass]
-pub(crate) struct WrapCall {}
+pub(crate) struct WrapCall {
+    callback: PyObject,
+}
 
 impl WrapCall {
-    fn py(py: Python) -> PyObject {
-        Self {}.into_py(py)
+    fn py(py: Python, callback: PyObject) -> PyObject {
+        Self { callback }.into_py(py)
     }
 }
 
 #[pyo3::pymethods]
 impl WrapCall {
     #[args(callback, args, kwargs = "None")]
-    fn __call__<'a>(&self, callback: &'a PyAny, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<&'a PyAny> {
-        callback.call(args, kwargs)
+    fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
+        self.callback.call(py, args, kwargs)
     }
 }

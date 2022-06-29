@@ -33,10 +33,11 @@ use std::pin::Pin;
 use std::sync::OnceLock;
 
 use pyo3::exceptions::{PyBaseException, PyRuntimeError};
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
 
 use crate::traits::PyLoop;
+use crate::WrapCall;
 
 type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
@@ -117,7 +118,7 @@ impl PyLoop for Trio {
         self.token.call_method1(
             py,
             "run_sync_soon",
-            (crate::WrapCall::py(py), callback.to_object(py), args, kwargs),
+            (WrapCall::py(py, callback.to_object(py)), PyTuple::new(py, args), kwargs),
         )?;
         Ok(())
     }
@@ -130,9 +131,9 @@ impl PyLoop for Trio {
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
         args.insert(0, callback.to_object(py));
-        self.call_soon1(py, crate::WrapCall::py(py).as_ref(py), vec![
-            import_trio_low(py)?.getattr("spawn_system_task")?.to_object(py),
-            args.to_object(py),
+        let wrapped = WrapCall::py(py, import_trio_low(py)?.getattr("spawn_system_task")?.to_object(py));
+        self.call_soon1(py, wrapped.as_ref(py), vec![
+            PyTuple::new(py, args).to_object(py),
             kwargs.to_object(py),
         ])?;
 

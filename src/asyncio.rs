@@ -103,24 +103,18 @@ impl Asyncio {
 }
 
 impl PyLoop for Asyncio {
-    fn call_soon(
-        &self,
-        py: Python,
-        callback: &PyAny,
-        mut args: Vec<PyObject>,
-        kwargs: Option<&PyDict>,
-    ) -> PyResult<()> {
-        args.insert(0, callback.to_object(py));
-        let args = PyTuple::new(py, args);
-        self.event_loop
-            .call_method1(py, "call_soon_threadsafe", (WrapCall::py(py), args, kwargs))?;
+    fn call_soon(&self, py: Python, callback: &PyAny, args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<()> {
+        self.event_loop.call_method1(
+            py,
+            "call_soon_threadsafe",
+            (WrapCall::py(py, callback.to_object(py)), PyTuple::new(py, args), kwargs),
+        )?;
         Ok(())
     }
 
     fn await_soon(&self, py: Python, callback: &PyAny, args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<()> {
         self.call_soon1(py, import_asyncio(py)?.getattr("create_task")?, vec![
-            WrapCall::py(py),
-            callback.to_object(py),
+            WrapCall::py(py, callback.to_object(py)),
             PyTuple::new(py, args).to_object(py),
             kwargs.to_object(py),
         ])?;
