@@ -12,9 +12,5 @@ async-oneshot = "0.5.0"
 version = "0.16.*"
 
 [dependencies.tokio]
-features = ["rt-multi-thread"]
+features = ["rt-multi-thread", "sync"]
 version = "1.19.2"
-
-[dependencies.uuid]
-features = ["v4"]
-version = "1.1.2"
