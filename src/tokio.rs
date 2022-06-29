@@ -35,13 +35,11 @@ use std::sync::LazyLock;
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
 use crate::any::get_running_loop;
-use crate::traits::PyLoop;
+use crate::traits::{BoxedFuture, PyLoop, PyLoop};
 
 tokio::task_local! {
     static PY_RUNTIME: Box<dyn PyLoop>;
 }
-
-type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 
 static EXECUTOR: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
@@ -114,9 +112,6 @@ where
     crate::any::local_future_into_py::<Tokio, _>(py, py_loop, fut)
 }
 
-pub fn to_future(
-    py: Python<'_>,
-    coroutine: &PyAny,
-) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+pub fn to_future(py: Python, coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     crate::any::to_future::<Tokio>(py, coroutine)
 }

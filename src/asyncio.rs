@@ -28,8 +28,6 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::OnceLock;
 
 use pyo3::conversion::AsPyPointer;
@@ -37,10 +35,8 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
 
-use crate::traits::PyLoop;
+use crate::traits::{BoxedFuture, PyLoop};
 use crate::WrapCall;
-
-type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 static ASYNCIO: OnceLock<PyObject> = OnceLock::new();
 
@@ -103,7 +99,7 @@ impl Asyncio {
 }
 
 impl PyLoop for Asyncio {
-    fn call_soon(&self, py: Python, callback: &PyAny, args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<()> {
+    fn call_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.event_loop.call_method1(
             py,
             "call_soon_threadsafe",
@@ -112,8 +108,8 @@ impl PyLoop for Asyncio {
         Ok(())
     }
 
-    fn await_soon(&self, py: Python, callback: &PyAny, args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<()> {
-        self.call_soon1(py, import_asyncio(py)?.getattr("create_task")?, vec![
+    fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
+        self.call_soon1(py, import_asyncio(py)?.getattr("create_task")?, &[
             WrapCall::py(py, callback.to_object(py)),
             PyTuple::new(py, args).to_object(py),
             kwargs.to_object(py),
@@ -124,7 +120,7 @@ impl PyLoop for Asyncio {
     fn await_coroutine(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
         let one_shot = AsyncioHook { sender }.into_py(py);
-        self.call_soon1(py, CreateEvent {}.into_py(py).as_ref(py), vec![
+        self.call_soon1(py, CreateEvent {}.into_py(py).as_ref(py), &[
             self.event_loop.clone_ref(py),
             coroutine.to_object(py),
             one_shot.getattr(py, "callback")?,

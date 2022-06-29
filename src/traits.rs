@@ -34,7 +34,7 @@ use std::pin::Pin;
 use pyo3::types::PyDict;
 use pyo3::{PyAny, PyObject, PyResult, Python};
 
-type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
+pub(crate) type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 pub trait RustRuntime {
     type JoinError: std::error::Error;
@@ -55,20 +55,20 @@ pub trait PyLoop: Send {
         &self,
         py: Python,
         callback: &PyAny,
-        args: Vec<PyObject>, // TODO: possible impl IntoIterator<Item = T>
+        args: &[PyObject], // TODO: possible impl IntoIterator<Item = T>
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
     fn call_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
-        self.call_soon(py, callback, Vec::new(), None)
+        self.call_soon(py, callback, &[], None)
     }
-    fn call_soon1(&self, py: Python, callback: &PyAny, args: Vec<PyObject>) -> PyResult<()> {
+    fn call_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.call_soon(py, callback, args, None)
     }
-    fn await_soon(&self, py: Python, callback: &PyAny, args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<()>;
+    fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()>;
     fn await_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
-        self.await_soon(py, callback, Vec::new(), None)
+        self.await_soon(py, callback, &[], None)
     }
-    fn await_soon1(&self, py: Python, callback: &PyAny, args: Vec<PyObject>) -> PyResult<()> {
+    fn await_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.await_soon(py, callback, args, None)
     }
     fn await_coroutine(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>>;

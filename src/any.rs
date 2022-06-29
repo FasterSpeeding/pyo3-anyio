@@ -48,7 +48,7 @@ fn import_sys(py: Python) -> PyResult<&PyAny> {
 }
 
 
-fn py_one_shot(py: Python<'_>) -> PyResult<&PyAny> {
+fn py_one_shot(py: Python) -> PyResult<&PyAny> {
     PY_ONE_SHOT
         .get_or_try_init(|| {
             let globals = PyDict::new(py);
@@ -135,10 +135,10 @@ where
             let py_loop = R::get_loop().unwrap();
             match result {
                 Ok(value) => py_loop
-                    .call_soon1(py, set_value.as_ref(py), vec![value.into_py(py)])
+                    .call_soon1(py, set_value.as_ref(py), &[value.into_py(py)])
                     .unwrap(),
                 Err(err) => py_loop
-                    .call_soon1(py, set_exception.as_ref(py), vec![err.to_object(py)])
+                    .call_soon1(py, set_exception.as_ref(py), &[err.to_object(py)])
                     .unwrap(),
             };
         });
@@ -178,7 +178,7 @@ where
 }
 
 pub fn to_future<R: RustRuntime>(
-    py: Python<'_>,
+    py: Python,
     coroutine: &PyAny,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     // TODO: handling when None

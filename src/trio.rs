@@ -28,18 +28,14 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::OnceLock;
 
 use pyo3::exceptions::{PyBaseException, PyRuntimeError};
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
 
-use crate::traits::PyLoop;
+use crate::traits::{BoxedFuture, PyLoop};
 use crate::WrapCall;
-
-type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 static TRIO_HOOK: OnceLock<PyObject> = OnceLock::new();
 static TRIO_LOW: OnceLock<PyObject> = OnceLock::new();
@@ -51,7 +47,7 @@ fn import_trio_low(py: Python) -> PyResult<&PyAny> {
 }
 
 
-fn wrap_coro(py: Python<'_>) -> PyResult<&PyAny> {
+fn wrap_coro(py: Python) -> PyResult<&PyAny> {
     TRIO_HOOK
         .get_or_try_init(|| {
             let globals = PyDict::new(py);
@@ -114,7 +110,7 @@ impl Trio {
 }
 
 impl PyLoop for Trio {
-    fn call_soon(&self, py: Python, callback: &PyAny, args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<()> {
+    fn call_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.token.call_method1(
             py,
             "run_sync_soon",
@@ -123,17 +119,10 @@ impl PyLoop for Trio {
         Ok(())
     }
 
-    fn await_soon(
-        &self,
-        py: Python,
-        callback: &PyAny,
-        mut args: Vec<PyObject>,
-        kwargs: Option<&PyDict>,
-    ) -> PyResult<()> {
-        args.insert(0, callback.to_object(py));
+    fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         let wrapped = WrapCall::py(py, import_trio_low(py)?.getattr("spawn_system_task")?.to_object(py));
-        self.call_soon1(py, wrapped.as_ref(py), vec![
-            PyTuple::new(py, args).to_object(py),
+        self.call_soon1(py, wrapped.as_ref(py), &[
+            PyTuple::new(py, [&[callback.to_object(py)], args].concat()).to_object(py),
             kwargs.to_object(py),
         ])?;
 
@@ -144,7 +133,7 @@ impl PyLoop for Trio {
         let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
         let one_shot = TrioHook { sender }.into_py(py);
 
-        self.call_soon1(py, import_trio_low(py)?.getattr("spawn_system_task")?, vec![
+        self.call_soon1(py, import_trio_low(py)?.getattr("spawn_system_task")?, &[
             wrap_coro(py)?.to_object(py),
             coroutine.to_object(py),
             one_shot,
