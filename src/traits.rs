@@ -37,8 +37,6 @@ use pyo3::{PyAny, PyObject, PyResult, Python};
 type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 pub trait RustRuntime {
-    // fn get_py_loop(&self) -> Box<dyn PyLoop> {
-    // }
     type JoinError: std::error::Error;
     type JoinHandle: Future<Output = Result<(), Self::JoinError>> + Send;
 

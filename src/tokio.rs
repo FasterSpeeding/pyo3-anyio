@@ -34,6 +34,7 @@ use std::sync::LazyLock;
 
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
+use crate::any::get_running_loop;
 use crate::traits::PyLoop;
 
 tokio::task_local! {
@@ -82,12 +83,40 @@ impl crate::traits::RustRuntime for Tokio {
 pub fn future_into_py<T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    crate::any::future_into_py::<Tokio, _>(py, fut)
+    let py_loop = get_running_loop(py)?;
+    crate::any::future_into_py::<Tokio, _>(py, py_loop, fut)
 }
 
-pub fn into_future(
+pub fn future_into_py_with_loop<T>(
+    py: Python,
+    py_loop: Box<dyn PyLoop>,
+    fut: impl Future<Output = PyResult<T>> + Send + 'static,
+) -> PyResult<&PyAny>
+where
+    T: IntoPy<PyObject>, {
+    crate::any::future_into_py::<Tokio, _>(py, py_loop, fut)
+}
+
+pub fn local_future_into_py<T>(py: Python, fut: impl Future<Output = PyResult<T>> + 'static) -> PyResult<&PyAny>
+where
+    T: IntoPy<PyObject>, {
+    let py_loop = get_running_loop(py)?;
+    crate::any::local_future_into_py::<Tokio, _>(py, py_loop, fut)
+}
+
+pub fn local_future_into_py_with_loop<T>(
+    py: Python,
+    py_loop: Box<dyn PyLoop>,
+    fut: impl Future<Output = PyResult<T>> + 'static,
+) -> PyResult<&PyAny>
+where
+    T: IntoPy<PyObject>, {
+    crate::any::local_future_into_py::<Tokio, _>(py, py_loop, fut)
+}
+
+pub fn to_future(
     py: Python<'_>,
     coroutine: &PyAny,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
-    crate::any::into_future::<Tokio>(py, coroutine)
+    crate::any::to_future::<Tokio>(py, coroutine)
 }

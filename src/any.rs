@@ -101,23 +101,27 @@ class OneShotChannel:
         .call0()
 }
 
-pub(crate) fn py_loop(py: Python) -> PyResult<Box<dyn PyLoop>> {
+pub fn get_running_loop(py: Python) -> PyResult<Box<dyn PyLoop>> {
     // sys.modules is used here to avoid unnecessarily trying to import asyncio or
     // trio if it hasn't been imported yet or isn't installed.
     let sys = import_sys(py)?.getattr("modules")?;
 
-    if sys.contains("asyncio")? && let Some(loop_) = Asyncio::new(py)? {
+    if sys.contains("asyncio")? && let Some(loop_) = Asyncio::get_running_loop(py)? {
         return Ok(Box::new(loop_));
     };
 
-    if sys.contains("trio")? && let Some(loop_) = Trio::new(py)? {
+    if sys.contains("trio")? && let Some(loop_) = Trio::get_running_loop(py)? {
         return Ok(Box::new(loop_))
     };
 
     Err(PyRuntimeError::new_err("No running event loop"))
 }
 
-pub fn future_into_py<R, T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static) -> PyResult<&PyAny>
+pub fn local_future_into_py<R, T>(
+    py: Python,
+    py_loop: Box<dyn PyLoop>,
+    fut: impl Future<Output = PyResult<T>> + 'static,
+) -> PyResult<&PyAny>
 where
     R: RustRuntime,
     T: IntoPy<PyObject>, {
@@ -125,7 +129,7 @@ where
     let set_value = channel.getattr("set")?.to_object(py);
     let set_exception = channel.getattr("set_exception")?.to_object(py);
 
-    R::spawn(R::scope(py_loop(py)?, async move {
+    R::spawn_local(R::scope_local(py_loop, async move {
         let result = fut.await;
         Python::with_gil(|py| {
             let py_loop = R::get_loop().unwrap();
@@ -143,7 +147,37 @@ where
     Ok(channel)
 }
 
-pub fn into_future<R: RustRuntime>(
+pub fn future_into_py<R, T>(
+    py: Python,
+    py_loop: Box<dyn PyLoop>,
+    fut: impl Future<Output = PyResult<T>> + Send + 'static,
+) -> PyResult<&PyAny>
+where
+    R: RustRuntime,
+    T: IntoPy<PyObject>, {
+    let channel = py_one_shot(py)?;
+    let set_value = channel.getattr("set")?.to_object(py);
+    let set_exception = channel.getattr("set_exception")?.to_object(py);
+
+    R::spawn(R::scope(py_loop, async move {
+        let result = fut.await;
+        Python::with_gil(|py| {
+            let py_loop = R::get_loop().unwrap();
+            match result {
+                Ok(value) => py_loop
+                    .call_soon1(py, set_value.as_ref(py), vec![value.into_py(py)])
+                    .unwrap(),
+                Err(err) => py_loop
+                    .call_soon1(py, set_exception.as_ref(py), vec![err.to_object(py)])
+                    .unwrap(),
+            };
+        });
+    }));
+
+    Ok(channel)
+}
+
+pub fn to_future<R: RustRuntime>(
     py: Python<'_>,
     coroutine: &PyAny,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {

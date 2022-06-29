@@ -102,7 +102,7 @@ pub struct Trio {
 }
 
 impl Trio {
-    pub fn new(py: Python) -> PyResult<Option<Self>> {
+    pub fn get_running_loop(py: Python) -> PyResult<Option<Self>> {
         match import_trio_low(py)?.call_method0("current_trio_token") {
             Ok(token) => Ok(Some(Self {
                 token: token.to_object(py),

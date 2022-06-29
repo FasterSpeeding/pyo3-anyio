@@ -37,11 +37,15 @@
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::{IntoPy, PyObject, PyResult, Python};
 
-mod any;
+pub mod any;
 mod asyncio;
 pub mod tokio;
 pub mod traits;
 mod trio;
+
+pub use crate::any::get_running_loop;
+pub use crate::asyncio::Asyncio;
+pub use crate::trio::Trio;
 
 #[pyo3::pyclass]
 pub(crate) struct WrapCall {

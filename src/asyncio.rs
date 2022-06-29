@@ -91,7 +91,7 @@ pub struct Asyncio {
 
 
 impl Asyncio {
-    pub fn new(py: Python) -> PyResult<Option<Self>> {
+    pub fn get_running_loop(py: Python) -> PyResult<Option<Self>> {
         match import_asyncio(py)?.call_method0("get_running_loop") {
             Ok(event_loop) => Ok(Some(Self {
                 event_loop: event_loop.to_object(py),
