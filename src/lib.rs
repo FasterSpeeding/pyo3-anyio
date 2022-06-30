@@ -35,7 +35,7 @@
 #![feature(trait_alias)]
 
 use pyo3::types::{PyDict, PyTuple};
-use pyo3::{IntoPy, PyObject, PyResult, Python};
+use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
 
 pub mod any;
 mod asyncio;
@@ -50,18 +50,28 @@ pub use crate::trio::Trio;
 #[pyo3::pyclass]
 pub(crate) struct WrapCall {
     callback: PyObject,
+    context: Option<PyObject>,
 }
 
 impl WrapCall {
-    fn py(py: Python, callback: PyObject) -> PyObject {
-        Self { callback }.into_py(py)
+    fn py(py: Python, context: Option<&PyAny>, callback: &PyAny) -> PyObject {
+        Self {
+            callback: callback.to_object(py),
+            context: context.map(|value| value.to_object(py)),
+        }
+        .into_py(py)
     }
 }
 
 #[pyo3::pymethods]
 impl WrapCall {
     #[args(callback, args, kwargs = "None")]
-    fn __call__(&self, py: Python, args: &PyTuple, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
-        self.callback.call(py, args, kwargs)
+    fn __call__(&self, py: Python, mut args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
+        if let Some(context) = self.context.as_ref() {
+            args.insert(0, self.callback.clone_ref(py));
+            context.call_method(py, "run", PyTuple::new(py, args), kwargs)
+        } else {
+            self.callback.call(py, PyTuple::new(py, args), kwargs)
+        }
     }
 }

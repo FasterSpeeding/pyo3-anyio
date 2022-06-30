@@ -34,11 +34,11 @@ use std::sync::LazyLock;
 
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
-use crate::any::get_running_loop;
-use crate::traits::{BoxedFuture, PyLoop, PyLoop};
+use crate::any::TaskLocals;
+use crate::traits::BoxedFuture;
 
 tokio::task_local! {
-    static PY_RUNTIME: Box<dyn PyLoop>;
+    static LOCALS: TaskLocals
 }
 
 
@@ -62,54 +62,52 @@ impl crate::traits::RustRuntime for Tokio {
         tokio::task::spawn_local(fut)
     }
 
-    fn get_loop() -> Option<Box<dyn PyLoop>> {
-        PY_RUNTIME.try_with(|value| value.clone_box()).ok()
+    fn get_locals(py: Python) -> Option<TaskLocals> {
+        LOCALS.try_with(|value| value.clone_py(py)).ok()
     }
 
-    fn scope<R>(loop_: Box<dyn PyLoop>, fut: impl Future<Output = R> + Send + 'static) -> BoxedFuture<R> {
-        Box::pin(PY_RUNTIME.scope(loop_, fut))
+    fn scope<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 'static) -> BoxedFuture<R> {
+        Box::pin(LOCALS.scope(locals, fut))
     }
 
     fn scope_local<R>(
-        loop_: Box<dyn PyLoop>,
+        locals: TaskLocals,
         fut: impl Future<Output = R> + 'static,
-    ) -> Pin<Box<dyn Future<Output = R>>> {
-        Box::pin(PY_RUNTIME.scope(loop_, fut))
+    ) -> Pin<Box<dyn Future<Output = R> + 'static>> {
+        Box::pin(LOCALS.scope(locals, fut))
     }
 }
 
 pub fn future_into_py<T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    let py_loop = get_running_loop(py)?;
-    crate::any::future_into_py::<Tokio, _>(py, py_loop, fut)
+    future_into_py_with_loop(py, TaskLocals::default(py)?, fut)
 }
 
 pub fn future_into_py_with_loop<T>(
     py: Python,
-    py_loop: Box<dyn PyLoop>,
+    locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + Send + 'static,
 ) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    crate::any::future_into_py::<Tokio, _>(py, py_loop, fut)
+    crate::any::future_into_py::<Tokio, _>(py, locals, fut)
 }
 
 pub fn local_future_into_py<T>(py: Python, fut: impl Future<Output = PyResult<T>> + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    let py_loop = get_running_loop(py)?;
-    crate::any::local_future_into_py::<Tokio, _>(py, py_loop, fut)
+    local_future_into_py_with_loop(py, TaskLocals::default(py)?, fut)
 }
 
 pub fn local_future_into_py_with_loop<T>(
     py: Python,
-    py_loop: Box<dyn PyLoop>,
+    locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + 'static,
 ) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    crate::any::local_future_into_py::<Tokio, _>(py, py_loop, fut)
+    crate::any::local_future_into_py::<Tokio, _>(py, locals, fut)
 }
 
 pub fn to_future(py: Python, coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {

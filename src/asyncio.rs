@@ -65,14 +65,29 @@ impl AsyncioHook {
 }
 
 #[pyo3::pyclass]
-struct CreateEvent {}
+struct CreateEvent {
+    context: Option<PyObject>,
+}
+
+impl CreateEvent {
+    fn py(py: Python, context: Option<&PyAny>) -> PyObject {
+        Self {
+            context: context.map(|value| value.to_object(py)),
+        }
+        .into_py(py)
+    }
+}
 
 #[pyo3::pymethods]
 impl CreateEvent {
-    fn __call__(&self, event_loop: &PyAny, awaitable: &PyAny, one_shot: &PyAny) -> PyResult<()> {
-        let task = event_loop.call_method1("create_task", (awaitable,))?;
+    fn __call__(&self, py: Python, event_loop: &PyAny, awaitable: &PyAny, one_shot: &PyAny) -> PyResult<()> {
+        let task = if let Some(context) = self.context.as_ref() {
+            context.call_method1(py, "run", (event_loop.getattr("create_task")?, awaitable))?
+        } else {
+            event_loop.call_method1("create_task", (awaitable,))?.to_object(py)
+        };
 
-        task.call_method1("add_done_callback", (one_shot,))?;
+        task.call_method1(py, "add_done_callback", (one_shot,))?;
 
         unsafe { pyo3::ffi::Py_IncRef(task.as_ptr()) }
 
@@ -99,28 +114,48 @@ impl Asyncio {
 }
 
 impl PyLoop for Asyncio {
-    fn call_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
+    fn call_soon(
+        &self,
+        py: Python,
+        context: Option<&PyAny>,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<()> {
         self.event_loop.call_method1(
             py,
             "call_soon_threadsafe",
-            (WrapCall::py(py, callback.to_object(py)), PyTuple::new(py, args), kwargs),
+            (WrapCall::py(py, context, callback), PyTuple::new(py, args), kwargs),
         )?;
         Ok(())
     }
 
-    fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
-        self.call_soon1(py, import_asyncio(py)?.getattr("create_task")?, &[
-            WrapCall::py(py, callback.to_object(py)),
+    fn await_soon(
+        &self,
+        py: Python,
+        context: Option<&PyAny>,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<()> {
+        self.call_soon1(py, context, import_asyncio(py)?.getattr("create_task")?, &[
+            WrapCall::py(py, context, callback),
             PyTuple::new(py, args).to_object(py),
             kwargs.to_object(py),
         ])?;
         Ok(())
     }
 
-    fn await_coroutine(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+    fn await_coroutine(
+        &self,
+        py: Python,
+        context: Option<&PyAny>,
+        coroutine: &PyAny,
+    ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
         let one_shot = AsyncioHook { sender }.into_py(py);
-        self.call_soon1(py, CreateEvent {}.into_py(py).as_ref(py), &[
+
+        self.call_soon1(py, None, CreateEvent::py(py, context).as_ref(py), &[
             self.event_loop.clone_ref(py),
             coroutine.to_object(py),
             one_shot.getattr(py, "callback")?,

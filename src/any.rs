@@ -36,7 +36,7 @@ use pyo3::types::PyDict;
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
 
 use crate::asyncio::Asyncio;
-use crate::traits::{PyLoop, RustRuntime};
+use crate::traits::{BoxedFuture, PyLoop, RustRuntime};
 use crate::trio::Trio;
 
 static PY_ONE_SHOT: OnceLock<PyObject> = OnceLock::new();
@@ -117,9 +117,71 @@ pub fn get_running_loop(py: Python) -> PyResult<Box<dyn PyLoop>> {
     Err(PyRuntimeError::new_err("No running event loop"))
 }
 
+pub struct TaskLocals {
+    py_loop: Box<dyn PyLoop>,
+    context: Option<PyObject>,
+}
+
+impl TaskLocals {
+    pub fn new(py_loop: Box<dyn PyLoop>, context: Option<PyObject>) -> Self {
+        Self { py_loop, context }
+    }
+
+    pub fn default(py: Python) -> PyResult<Self> {
+        Ok(Self::new(get_running_loop(py)?, None))
+    }
+
+    pub fn clone_py(&self, py: Python) -> Self {
+        TaskLocals {
+            py_loop: self.py_loop.clone_box(),
+            context: self.context.as_ref().map(|value| value.clone_ref(py)),
+        }
+    }
+
+    fn _context_ref<'a>(&'a self, py: Python<'a>) -> Option<&'a PyAny> {
+        self.context.as_ref().map(|value| value.as_ref(py))
+    }
+
+    pub fn call_soon(
+        &self,
+        py: Python,
+        callback: &PyAny,
+        args: &[PyObject], // TODO: possible impl IntoIterator<Item = T>
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<()> {
+        self.py_loop
+            .call_soon(py, self._context_ref(py), callback, args, kwargs)
+    }
+
+    pub fn call_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
+        self.call_soon(py, callback, &[], None)
+    }
+
+    pub fn call_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+        self.call_soon(py, callback, args, None)
+    }
+
+    pub fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
+        self.py_loop
+            .await_soon(py, self._context_ref(py), callback, args, kwargs)
+    }
+
+    pub fn await_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
+        self.await_soon(py, callback, &[], None)
+    }
+
+    pub fn await_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+        self.await_soon(py, callback, args, None)
+    }
+
+    pub fn await_coroutine(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+        self.py_loop.await_coroutine(py, self._context_ref(py), coroutine)
+    }
+}
+
 pub fn local_future_into_py<R, T>(
     py: Python,
-    py_loop: Box<dyn PyLoop>,
+    locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + 'static,
 ) -> PyResult<&PyAny>
 where
@@ -129,15 +191,15 @@ where
     let set_value = channel.getattr("set")?.to_object(py);
     let set_exception = channel.getattr("set_exception")?.to_object(py);
 
-    R::spawn_local(R::scope_local(py_loop, async move {
+    R::spawn_local(R::scope_local(locals, async move {
         let result = fut.await;
         Python::with_gil(|py| {
-            let py_loop = R::get_loop().unwrap();
+            let locals = R::get_locals(py).unwrap();
             match result {
-                Ok(value) => py_loop
+                Ok(value) => locals
                     .call_soon1(py, set_value.as_ref(py), &[value.into_py(py)])
                     .unwrap(),
-                Err(err) => py_loop
+                Err(err) => locals
                     .call_soon1(py, set_exception.as_ref(py), &[err.to_object(py)])
                     .unwrap(),
             };
@@ -149,7 +211,7 @@ where
 
 pub fn future_into_py<R, T>(
     py: Python,
-    py_loop: Box<dyn PyLoop>,
+    locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + Send + 'static,
 ) -> PyResult<&PyAny>
 where
@@ -159,16 +221,16 @@ where
     let set_value = channel.getattr("set")?.to_object(py);
     let set_exception = channel.getattr("set_exception")?.to_object(py);
 
-    R::spawn(R::scope(py_loop, async move {
+    R::spawn(R::scope(locals, async move {
         let result = fut.await;
         Python::with_gil(|py| {
-            let py_loop = R::get_loop().unwrap();
+            let locals = R::get_locals(py).unwrap();
             match result {
-                Ok(value) => py_loop
-                    .call_soon1(py, set_value.as_ref(py), vec![value.into_py(py)])
+                Ok(value) => locals
+                    .call_soon1(py, set_value.as_ref(py), &[value.into_py(py)])
                     .unwrap(),
-                Err(err) => py_loop
-                    .call_soon1(py, set_exception.as_ref(py), vec![err.to_object(py)])
+                Err(err) => locals
+                    .call_soon1(py, set_exception.as_ref(py), &[err.to_object(py)])
                     .unwrap(),
             };
         });
@@ -182,5 +244,5 @@ pub fn to_future<R: RustRuntime>(
     coroutine: &PyAny,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     // TODO: handling when None
-    R::get_loop().unwrap().await_coroutine(py, coroutine)
+    R::get_locals(py).unwrap().await_coroutine(py, coroutine)
 }

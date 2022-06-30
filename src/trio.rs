@@ -31,7 +31,7 @@
 use std::sync::OnceLock;
 
 use pyo3::exceptions::{PyBaseException, PyRuntimeError};
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::{IntoPyDict, PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
 
 use crate::traits::{BoxedFuture, PyLoop};
@@ -110,34 +110,59 @@ impl Trio {
 }
 
 impl PyLoop for Trio {
-    fn call_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
+    fn call_soon(
+        &self,
+        py: Python,
+        context: Option<&PyAny>,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<()> {
         self.token.call_method1(
             py,
             "run_sync_soon",
-            (WrapCall::py(py, callback.to_object(py)), PyTuple::new(py, args), kwargs),
+            (WrapCall::py(py, context, callback), PyTuple::new(py, args), kwargs),
         )?;
         Ok(())
     }
 
-    fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
-        let wrapped = WrapCall::py(py, import_trio_low(py)?.getattr("spawn_system_task")?.to_object(py));
-        self.call_soon1(py, wrapped.as_ref(py), &[
-            PyTuple::new(py, [&[callback.to_object(py)], args].concat()).to_object(py),
-            kwargs.to_object(py),
-        ])?;
+    fn await_soon(
+        &self,
+        py: Python,
+        context: Option<&PyAny>,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<()> {
+        let args = &[&[callback.to_object(py)], args].concat();
+        let wrapped = WrapCall::py(py, None, import_trio_low(py)?.getattr("spawn_system_task")?);
+        self.call_soon(
+            py,
+            None,
+            wrapped.as_ref(py),
+            &[PyTuple::new(py, args).to_object(py), kwargs.to_object(py)],
+            Some([("context", context)].into_py_dict(py)),
+        )?;
 
         Ok(())
     }
 
-    fn await_coroutine(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+    fn await_coroutine(
+        &self,
+        py: Python,
+        context: Option<&PyAny>,
+        coroutine: &PyAny,
+    ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
         let one_shot = TrioHook { sender }.into_py(py);
 
-        self.call_soon1(py, import_trio_low(py)?.getattr("spawn_system_task")?, &[
-            wrap_coro(py)?.to_object(py),
-            coroutine.to_object(py),
-            one_shot,
-        ])?;
+        self.call_soon(
+            py,
+            None,
+            import_trio_low(py)?.getattr("spawn_system_task")?,
+            &[wrap_coro(py)?.to_object(py), coroutine.to_object(py), one_shot],
+            Some([("context", context)].into_py_dict(py)),
+        )?;
 
         Ok(Box::pin(async move { receiver.await.unwrap() }))
     }

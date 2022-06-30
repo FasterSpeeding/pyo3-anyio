@@ -34,43 +34,58 @@ use std::pin::Pin;
 use pyo3::types::PyDict;
 use pyo3::{PyAny, PyObject, PyResult, Python};
 
+use crate::any::TaskLocals;
+
 pub(crate) type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 pub trait RustRuntime {
     type JoinError: std::error::Error;
     type JoinHandle: Future<Output = Result<(), Self::JoinError>> + Send;
 
-    fn get_loop() -> Option<Box<dyn PyLoop>>;
+    fn get_locals(py: Python) -> Option<TaskLocals>;
     fn spawn(fut: impl Future<Output = ()> + Send + 'static) -> Self::JoinHandle;
     fn spawn_local(fut: impl Future<Output = ()> + 'static) -> Self::JoinHandle;
-    fn scope<R>(loop_: Box<dyn PyLoop>, fut: impl Future<Output = R> + Send + 'static) -> BoxedFuture<R>;
+    fn scope<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 'static) -> BoxedFuture<R>;
     fn scope_local<R>(
-        loop_: Box<dyn PyLoop>,
+        locals: TaskLocals,
         fut: impl Future<Output = R> + 'static,
-    ) -> Pin<Box<dyn Future<Output = R>>>;
+    ) -> Pin<Box<dyn Future<Output = R> + 'static>>;
 }
 
 pub trait PyLoop: Send {
     fn call_soon(
         &self,
         py: Python,
+        context: Option<&PyAny>,
         callback: &PyAny,
         args: &[PyObject], // TODO: possible impl IntoIterator<Item = T>
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
-    fn call_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
-        self.call_soon(py, callback, &[], None)
+    fn call_soon0(&self, py: Python, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
+        self.call_soon(py, context, callback, &[], None)
     }
-    fn call_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
-        self.call_soon(py, callback, args, None)
+    fn call_soon1(&self, py: Python, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+        self.call_soon(py, context, callback, args, None)
     }
-    fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()>;
-    fn await_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
-        self.await_soon(py, callback, &[], None)
+    fn await_soon(
+        &self,
+        py: Python,
+        context: Option<&PyAny>,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<()>;
+    fn await_soon0(&self, py: Python, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
+        self.await_soon(py, context, callback, &[], None)
     }
-    fn await_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
-        self.await_soon(py, callback, args, None)
+    fn await_soon1(&self, py: Python, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+        self.await_soon(py, context, callback, args, None)
     }
-    fn await_coroutine(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>>;
+    fn await_coroutine(
+        &self,
+        py: Python,
+        context: Option<&PyAny>,
+        coroutine: &PyAny,
+    ) -> PyResult<BoxedFuture<PyResult<PyObject>>>;
     fn clone_box(&self) -> Box<dyn PyLoop>;
 }
