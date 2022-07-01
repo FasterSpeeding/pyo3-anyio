@@ -31,21 +31,12 @@
 use std::future::Future;
 use std::sync::OnceLock;
 
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::PyDict;
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
 
-use crate::asyncio::Asyncio;
 use crate::traits::{BoxedFuture, PyLoop, RustRuntime};
-use crate::trio::Trio;
 
 static PY_ONE_SHOT: OnceLock<PyObject> = OnceLock::new();
-static SYS: OnceLock<PyObject> = OnceLock::new();
-
-fn import_sys(py: Python) -> PyResult<&PyAny> {
-    SYS.get_or_try_init(|| Ok(py.import("sys")?.to_object(py)))
-        .map(|value| value.as_ref(py))
-}
 
 
 fn py_one_shot(py: Python) -> PyResult<&PyAny> {
@@ -101,22 +92,6 @@ class OneShotChannel:
         .call0()
 }
 
-pub fn get_running_loop(py: Python) -> PyResult<Box<dyn PyLoop>> {
-    // sys.modules is used here to avoid unnecessarily trying to import asyncio or
-    // trio if it hasn't been imported yet or isn't installed.
-    let sys = import_sys(py)?.getattr("modules")?;
-
-    if sys.contains("asyncio")? && let Some(loop_) = Asyncio::get_running_loop(py)? {
-        return Ok(Box::new(loop_));
-    };
-
-    if sys.contains("trio")? && let Some(loop_) = Trio::get_running_loop(py)? {
-        return Ok(Box::new(loop_))
-    };
-
-    Err(PyRuntimeError::new_err("No running event loop"))
-}
-
 pub struct TaskLocals {
     py_loop: Box<dyn PyLoop>,
     context: Option<PyObject>,
@@ -128,7 +103,7 @@ impl TaskLocals {
     }
 
     pub fn default(py: Python) -> PyResult<Self> {
-        Ok(Self::new(get_running_loop(py)?, None))
+        Ok(Self::new(crate::get_running_loop(py)?, None))
     }
 
     pub fn clone_py(&self, py: Python) -> Self {

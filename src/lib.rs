@@ -34,18 +34,29 @@
 #![feature(once_cell)]
 #![feature(trait_alias)]
 
+use std::sync::OnceLock;
+
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
-
 pub mod any;
 mod asyncio;
 pub mod tokio;
 pub mod traits;
 mod trio;
 
-pub use crate::any::get_running_loop;
 pub use crate::asyncio::Asyncio;
+use crate::traits::PyLoop;
 pub use crate::trio::Trio;
+
+
+static SYS_MODULES: OnceLock<PyObject> = OnceLock::new();
+
+fn import_sys_modules(py: Python) -> PyResult<&PyAny> {
+    SYS_MODULES
+        .get_or_try_init(|| Ok(py.import("sys")?.getattr("modules")?.to_object(py)))
+        .map(|value| value.as_ref(py))
+}
 
 #[pyo3::pyclass]
 pub(crate) struct WrapCall {
@@ -74,4 +85,20 @@ impl WrapCall {
             self.callback.call(py, PyTuple::new(py, args), kwargs)
         }
     }
+}
+
+pub fn get_running_loop(py: Python) -> PyResult<Box<dyn PyLoop>> {
+    // sys.modules is used here to avoid unnecessarily trying to import asyncio or
+    // trio if it hasn't been imported yet or isn't installed.
+    let modules = import_sys_modules(py)?;
+
+    if modules.contains("asyncio")? && let Some(loop_) = Asyncio::get_running_loop(py)? {
+        return Ok(Box::new(loop_));
+    };
+
+    if modules.contains("trio")? && let Some(loop_) = Trio::get_running_loop(py)? {
+        return Ok(Box::new(loop_))
+    };
+
+    Err(PyRuntimeError::new_err("No running event loop"))
 }
