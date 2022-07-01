@@ -28,6 +28,9 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+
+//! Tokio specific functions for handling futures and coroutines.
+
 use std::future::Future;
 use std::pin::Pin;
 
@@ -79,13 +82,24 @@ impl crate::traits::RustRuntime for Tokio {
     }
 }
 
+/// Convert a Rust future into a Python coroutine.
+///
+/// # Arguments
+/// * `py` - The GIL hold token.
+/// * `fut` The future to convert into a Python coroutine.
 pub fn future_into_py<T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    future_into_py_with_loop(py, TaskLocals::default(py)?, fut)
+    future_into_py_with_locals(py, TaskLocals::default(py)?, fut)
 }
 
-pub fn future_into_py_with_loop<T>(
+/// Convert a Rust future into a Python coroutine with the passed task locals.
+///
+/// # Arguments
+/// * `py` - The GIL hold token.
+/// * `locals` - The task locals to execute the future with, if applicable.
+/// * `fut` The future to convert into a Python coroutine.
+pub fn future_into_py_with_locals<T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + Send + 'static,
@@ -95,13 +109,25 @@ where
     crate::any::future_into_py::<Tokio, _>(py, locals, fut)
 }
 
+/// Convert a !Send Rust future into a Python coroutine.
+///
+/// # Arguments
+/// * `py` - The GIL hold token.
+/// * `fut` The future to convert into a Python coroutine.
 pub fn local_future_into_py<T>(py: Python, fut: impl Future<Output = PyResult<T>> + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    local_future_into_py_with_loop(py, TaskLocals::default(py)?, fut)
+    local_future_into_py_with_locals(py, TaskLocals::default(py)?, fut)
 }
 
-pub fn local_future_into_py_with_loop<T>(
+/// Convert a !Send Rust future into a Python coroutine with the passed task
+/// locals.
+///
+/// # Arguments
+/// * `py` - The GIL hold token.
+/// * `locals` - The task locals to execute the future with, if applicable.
+/// * `fut` The future to convert into a Python coroutine.
+pub fn local_future_into_py_with_locals<T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + 'static,
@@ -111,6 +137,11 @@ where
     crate::any::local_future_into_py::<Tokio, _>(py, locals, fut)
 }
 
+/// Convert a Python coroutine to a Rust future.
+///
+/// # Arguments
+/// * `py` - The GIL hold token.
+/// * `coroutine` - The coroutine convert.
 pub fn to_future(py: Python, coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     crate::any::to_future::<Tokio>(py, coroutine)
 }

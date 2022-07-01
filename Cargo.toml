@@ -1,7 +1,16 @@
 [package]
 name = "pyo3-anyio"
+description = "PyO3 utility bindings for Anyio's event loop."
 version = "0.1.0"
 edition = "2021"
+authors = ["Faster Speeding <lucina@lmbyrne.dev>"]
+categories = ["asynchronous", "development-tools::ffi"]
+exclude = [".gitignore", ".gitattributes"]
+homepage = "https://github.com/FasterSpeeding/pyo3-anyio"
+keywords = ["anyio", "asyncio", "pyo3", "python", "trio"]
+license = "BSD-3-Clause"
+repository = "https://github.com/FasterSpeeding/pyo3-anyio"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

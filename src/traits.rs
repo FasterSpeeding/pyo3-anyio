@@ -28,6 +28,9 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+
+//! Traits used for handling Rust async runtimes and Python event loops.
+
 use std::future::Future;
 use std::pin::Pin;
 
@@ -38,21 +41,43 @@ use crate::any::TaskLocals;
 
 pub(crate) type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
+/// Trait used to represent a Rust async runtime.
 pub trait RustRuntime {
+    /// Error returned by a join handle after being awaited.
     type JoinError: std::error::Error;
+    /// The future of a spawned task.
     type JoinHandle: Future<Output = Result<(), Self::JoinError>> + Send;
 
+    /// Get the current task's set locals.
     fn get_locals(py: Python) -> Option<TaskLocals>;
+
+    /// Spawn a future on this runtime.
     fn spawn(fut: impl Future<Output = ()> + Send + 'static) -> Self::JoinHandle;
+
+    /// Spawn a !Send future on this runtime
     fn spawn_local(fut: impl Future<Output = ()> + 'static) -> Self::JoinHandle;
+
+    /// Scope the task locals for a future.
     fn scope<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 'static) -> BoxedFuture<R>;
+
+    /// Set the task locals for a !Send future.
     fn scope_local<R>(
         locals: TaskLocals,
         fut: impl Future<Output = R> + 'static,
     ) -> Pin<Box<dyn Future<Output = R> + 'static>>;
 }
 
+/// Reference to the running Python event loop.
 pub trait PyLoop: Send {
+    /// Call a python function soon in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `context` - The Python `contextvar` context to call this function in,
+    ///   if applicable.
+    /// * `callback` - The function to call.
+    /// * `args` - Slice of positional arguments to pass to the function.
+    /// * `kwargs` Python dict of keyword arguments to pass to the function.
     fn call_soon(
         &self,
         py: Python,
@@ -61,12 +86,36 @@ pub trait PyLoop: Send {
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
+    /// Call a python function soon (with no arguments) in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `context` - The Python `contextvar` context to call this function in,
+    ///   if applicable.
+    /// * `callback` - The function to call.
     fn call_soon0(&self, py: Python, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
         self.call_soon(py, context, callback, &[], None)
     }
+    /// Call a python function soon (with only positional arguments) in this
+    /// event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `context` - The Python `contextvar` context to call this function in,
+    ///   if applicable.
+    /// * `callback` - The function to call.
     fn call_soon1(&self, py: Python, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.call_soon(py, context, callback, args, None)
     }
+    /// Call an async python function soon in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `context` - The Python `contextvar` context to call this function in,
+    ///   if applicable.
+    /// * `callback` - The function to call.
+    /// * `args` - Slice of positional arguments to pass to the function.
+    /// * `kwargs` Python dict of keyword arguments to pass to the function.
     fn await_soon(
         &self,
         py: Python,
@@ -75,18 +124,50 @@ pub trait PyLoop: Send {
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
+    /// Call an async python function soon (with no arguments) in this event
+    /// loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `context` - The Python `contextvar` context to call this function in,
+    ///   if applicable.
+    /// * `callback` - The function to call.
+    /// * `args` - Slice of positional arguments to pass to the function.
+    /// * `kwargs` Python dict of keyword arguments to pass to the function.
     fn await_soon0(&self, py: Python, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
         self.await_soon(py, context, callback, &[], None)
     }
+    /// Call an async python function soon (with only positional arguments) in
+    /// this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `context` - The Python `contextvar` context to call this function in,
+    ///   if applicable.
+    /// * `callback` - The function to call.
+    /// * `args` - Slice of positional arguments to pass to the function.
+    /// * `kwargs` Python dict of keyword arguments to pass to the function.
     fn await_soon1(&self, py: Python, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.await_soon(py, context, callback, args, None)
     }
+
+    /// Convert a Python coroutine to a future.
+    ///
+    /// This will spawn the coroutine as a task in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `context` - The Python `contextvar` context to await this coroutine
+    ///   in, if applicable.
+    /// * `coroutine` The Python coroutine to await.
     fn to_future(
         &self,
         py: Python,
         context: Option<&PyAny>,
         coroutine: &PyAny,
     ) -> PyResult<BoxedFuture<PyResult<PyObject>>>;
+
+    #[doc(hidden)] // Internal method used to implement clone for Box<PyLoop>
     fn clone_box(&self) -> Box<dyn PyLoop>;
 }
 

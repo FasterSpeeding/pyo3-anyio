@@ -92,12 +92,17 @@ impl TrioHook {
 }
 
 
+/// Reference to the current Trio loop.
 #[derive(Clone)]
 pub struct Trio {
     token: PyObject,
 }
 
 impl Trio {
+    /// Get the current Trio token if this is in an active Trio loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
     pub fn get_running_loop(py: Python) -> PyResult<Option<Self>> {
         match import_trio_low(py)?.call_method0("current_trio_token") {
             Ok(token) => Ok(Some(Self {

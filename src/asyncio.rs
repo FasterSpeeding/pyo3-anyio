@@ -95,6 +95,7 @@ impl CreateEvent {
     }
 }
 
+/// Reference to the current Asyncio event loop.
 #[derive(Clone)]
 pub struct Asyncio {
     event_loop: PyObject,
@@ -102,6 +103,7 @@ pub struct Asyncio {
 
 
 impl Asyncio {
+    /// Get the current Asyncio event loop, if this is in an active loop.
     pub fn get_running_loop(py: Python) -> PyResult<Option<Self>> {
         match import_asyncio(py)?.call_method0("get_running_loop") {
             Ok(event_loop) => Ok(Some(Self {

@@ -28,6 +28,9 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+
+//! PyO3 utility bindings for Anyio's event loop.
+
 #![allow(clippy::borrow_deref_ref)] // Leads to a ton of false positives around args of py types.
 #![warn(missing_docs)]
 
@@ -84,6 +87,10 @@ impl WrapCall {
     }
 }
 
+/// Get the current thread's active event loop.
+///
+/// This will return a `Err(pyo3::PyErr)` where the inner type is
+/// `pyo3::exceptions::PyRuntimeError` if there is no running event loop.
 pub fn get_running_loop(py: Python) -> PyResult<Box<dyn PyLoop>> {
     // sys.modules is used here to avoid unnecessarily trying to import asyncio or
     // trio if it hasn't been imported yet or isn't installed.

@@ -28,6 +28,8 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+
+//! Functions and structs used for interacting with any Rust runtime.
 use std::future::Future;
 
 use once_cell::sync::OnceCell;
@@ -93,6 +95,7 @@ class OneShotChannel:
         .call0()
 }
 
+/// Task locals used to track the current event loop and `contextvar` context.
 #[derive(Clone)]
 pub struct TaskLocals {
     py_loop: Box<dyn PyLoop>,
@@ -100,14 +103,33 @@ pub struct TaskLocals {
 }
 
 impl TaskLocals {
+    /// Create a new task locals.
+    ///
+    /// # Arguments
+    /// * `py_loop` - The Python event loop this is bound to.
+    /// * `context` - The `contextvar` context this is bound to, if applicable.
     pub fn new(py_loop: Box<dyn PyLoop>, context: Option<PyObject>) -> Self {
         Self { py_loop, context }
     }
 
+    /// Create a new task locals from the current context.
+    ///
+    /// This will return a PyError if there is no running event loop in this
+    /// thread.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
     pub fn default(py: Python) -> PyResult<Self> {
         Ok(Self::new(crate::get_running_loop(py)?, None))
     }
 
+    /// Clone this task locals.
+    ///
+    /// This should be preferred over `std::clone::Clone` if you are already
+    /// holding the GIL.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
     pub fn clone_py(&self, py: Python) -> Self {
         Self {
             py_loop: self.py_loop.clone(),
@@ -119,37 +141,89 @@ impl TaskLocals {
         self.context.as_ref().map(|value| value.as_ref(py))
     }
 
+    /// Call a python function soon in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `callback` - The function to call.
+    /// * `args` - Slice of positional arguments to pass to the function.
+    /// * `kwargs` Python dict of keyword arguments to pass to the function.
     pub fn call_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
             .call_soon(py, self._context_ref(py), callback, args, kwargs)
     }
 
+    /// Call a python function soon (with no arguments) in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `callback` - The function to call.
     pub fn call_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
         self.call_soon(py, callback, &[], None)
     }
 
+    /// Call a python function soon (with only positional arguments) in this
+    /// event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `callback` - The function to call.
+    /// * `args` - Slice of positional arguments to pass to the function.
     pub fn call_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.call_soon(py, callback, args, None)
     }
 
+    /// Call an async python function soon in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `callback` - The function to call.
+    /// * `args` - Slice of positional arguments to pass to the function.
+    /// * `kwargs` Python dict of keyword arguments to pass to the function.
     pub fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
             .await_soon(py, self._context_ref(py), callback, args, kwargs)
     }
 
+    /// Call an async python function soon (with no arguments) in this event
+    /// loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `callback` - The function to call.
     pub fn await_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
         self.await_soon(py, callback, &[], None)
     }
 
+    /// Call an async python function soon (with only positional arguments
+    /// arguments) in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `callback` - The function to call.
+    /// * `args` - Slice of positional arguments to pass to the function.
     pub fn await_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.await_soon(py, callback, args, None)
     }
 
+    /// Convert a Python coroutine to a Rust future.
+    ///
+    /// This will spawn the coroutine as a task in this event loop.
+    ///
+    /// # Arguments
+    /// * `py` - The GIL hold token.
+    /// * `coroutine` The Python coroutine to await.
     pub fn to_future(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         self.py_loop.to_future(py, self._context_ref(py), coroutine)
     }
 }
 
+/// Convert a !Send Rust future into a Python coroutine.
+///
+/// # Arguments
+/// * `py` - The GIL hold token.
+/// * `locals` - The task locals to execute the future with, if applicable.
+/// * `fut` The future to convert into a Python coroutine.
 pub fn local_future_into_py<R, T>(
     py: Python,
     locals: TaskLocals,
@@ -180,6 +254,12 @@ where
     Ok(channel)
 }
 
+/// Convert a Rust future into a Python coroutine.
+///
+/// # Arguments
+/// * `py` - The GIL hold token.
+/// * `locals` - The task locals to execute the future with, if applicable.
+/// * `fut` The future to convert into a Python coroutine.
 pub fn future_into_py<R, T>(
     py: Python,
     locals: TaskLocals,
@@ -210,6 +290,11 @@ where
     Ok(channel)
 }
 
+/// Convert a Python coroutine to a Rust future.
+///
+/// # Arguments
+/// * `py` - The GIL hold token.
+/// * `coroutine` - The coroutine convert.
 pub fn to_future<R: RustRuntime>(
     py: Python,
     coroutine: &PyAny,
