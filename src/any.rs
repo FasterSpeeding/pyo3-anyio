@@ -92,6 +92,7 @@ class OneShotChannel:
         .call0()
 }
 
+#[derive(Clone)]
 pub struct TaskLocals {
     py_loop: Box<dyn PyLoop>,
     context: Option<PyObject>,
@@ -107,7 +108,7 @@ impl TaskLocals {
     }
 
     pub fn clone_py(&self, py: Python) -> Self {
-        TaskLocals {
+        Self {
             py_loop: self.py_loop.clone(),
             context: self.context.as_ref().map(|value| value.clone_ref(py)),
         }
