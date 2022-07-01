@@ -28,8 +28,7 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
-use std::sync::OnceLock;
-
+use once_cell::sync::OnceCell;
 use pyo3::conversion::AsPyPointer;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyDict, PyTuple};
@@ -38,7 +37,8 @@ use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
 use crate::traits::{BoxedFuture, PyLoop};
 use crate::WrapCall;
 
-static ASYNCIO: OnceLock<PyObject> = OnceLock::new();
+// TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
+static ASYNCIO: OnceCell<PyObject> = OnceCell::new();
 
 fn import_asyncio(py: Python) -> PyResult<&PyAny> {
     ASYNCIO

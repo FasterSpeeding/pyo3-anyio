@@ -29,14 +29,15 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 use std::future::Future;
-use std::sync::OnceLock;
 
+use once_cell::sync::OnceCell;
 use pyo3::types::PyDict;
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
 
 use crate::traits::{BoxedFuture, PyLoop, RustRuntime};
 
-static PY_ONE_SHOT: OnceLock<PyObject> = OnceLock::new();
+// TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
+static PY_ONE_SHOT: OnceCell<PyObject> = OnceCell::new();
 
 
 fn py_one_shot(py: Python) -> PyResult<&PyAny> {

@@ -29,13 +29,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 #![allow(clippy::borrow_deref_ref)] // Leads to a ton of false positives around args of py types.
-// #![warn(missing_docs)]
-#![feature(let_chains)]
-#![feature(once_cell)]
-#![feature(trait_alias)]
+#![warn(missing_docs)]
 
-use std::sync::OnceLock;
-
+use once_cell::sync::OnceCell;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
@@ -50,7 +46,8 @@ use crate::traits::PyLoop;
 pub use crate::trio::Trio;
 
 
-static SYS_MODULES: OnceLock<PyObject> = OnceLock::new();
+// TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
+static SYS_MODULES: OnceCell<PyObject> = OnceCell::new();
 
 fn import_sys_modules(py: Python) -> PyResult<&PyAny> {
     SYS_MODULES
@@ -92,12 +89,18 @@ pub fn get_running_loop(py: Python) -> PyResult<Box<dyn PyLoop>> {
     // trio if it hasn't been imported yet or isn't installed.
     let modules = import_sys_modules(py)?;
 
-    if modules.contains("asyncio")? && let Some(loop_) = Asyncio::get_running_loop(py)? {
-        return Ok(Box::new(loop_));
+    // TODO: switch to && let Some(loop) = ... once https://github.com/rust-lang/rust/pull/94927
+    // is merged and released
+    if modules.contains("asyncio")? {
+        if let Some(loop_) = Asyncio::get_running_loop(py)? {
+            return Ok(Box::new(loop_));
+        }
     };
 
-    if modules.contains("trio")? && let Some(loop_) = Trio::get_running_loop(py)? {
-        return Ok(Box::new(loop_))
+    if modules.contains("trio")? {
+        if let Some(loop_) = Trio::get_running_loop(py)? {
+            return Ok(Box::new(loop_));
+        }
     };
 
     Err(PyRuntimeError::new_err("No running event loop"))

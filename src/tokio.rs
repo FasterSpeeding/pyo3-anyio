@@ -30,8 +30,8 @@
 // POSSIBILITY OF SUCH DAMAGE.
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::LazyLock;
 
+use once_cell::sync::Lazy;
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
 use crate::any::TaskLocals;
@@ -42,7 +42,8 @@ tokio::task_local! {
 }
 
 
-static EXECUTOR: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+// TODO: switch to std::sync::LazyLock once https://github.com/rust-lang/rust/issues/74465 is done.
+static EXECUTOR: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
     let mut builder = tokio::runtime::Builder::new_multi_thread();
     builder.enable_all();
     builder.build().expect("Failed to start executor")
