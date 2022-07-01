@@ -141,7 +141,7 @@ impl TaskLocals {
         self.context.as_ref().map(|value| value.as_ref(py))
     }
 
-    /// Call a python function soon in this event loop.
+    /// Call a Python function soon in this event loop.
     ///
     /// # Arguments
     /// * `py` - The GIL hold token.
@@ -153,7 +153,7 @@ impl TaskLocals {
             .call_soon(py, self._context_ref(py), callback, args, kwargs)
     }
 
-    /// Call a python function soon (with no arguments) in this event loop.
+    /// Call a Python function soon (with no arguments) in this event loop.
     ///
     /// # Arguments
     /// * `py` - The GIL hold token.
@@ -162,7 +162,7 @@ impl TaskLocals {
         self.call_soon(py, callback, &[], None)
     }
 
-    /// Call a python function soon (with only positional arguments) in this
+    /// Call a Python function soon (with only positional arguments) in this
     /// event loop.
     ///
     /// # Arguments
@@ -173,37 +173,43 @@ impl TaskLocals {
         self.call_soon(py, callback, args, None)
     }
 
-    /// Call an async python function soon in this event loop.
+    /// Call an async Python function soon in this event loop.
     ///
     /// # Arguments
     /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
-    pub fn await_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
+    pub fn call_soon_async(
+        &self,
+        py: Python,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<()> {
         self.py_loop
-            .await_soon(py, self._context_ref(py), callback, args, kwargs)
+            .call_soon_async(py, self._context_ref(py), callback, args, kwargs)
     }
 
-    /// Call an async python function soon (with no arguments) in this event
+    /// Call an async Python function soon (with no arguments) in this event
     /// loop.
     ///
     /// # Arguments
     /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
-    pub fn await_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
-        self.await_soon(py, callback, &[], None)
+    pub fn call_soon_async0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
+        self.call_soon_async(py, callback, &[], None)
     }
 
-    /// Call an async python function soon (with only positional arguments
+    /// Call an async Python function soon (with only positional arguments
     /// arguments) in this event loop.
     ///
     /// # Arguments
     /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
-    pub fn await_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
-        self.await_soon(py, callback, args, None)
+    pub fn call_soon_async1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+        self.call_soon_async(py, callback, args, None)
     }
 
     /// Convert a Python coroutine to a Rust future.
@@ -213,8 +219,8 @@ impl TaskLocals {
     /// # Arguments
     /// * `py` - The GIL hold token.
     /// * `coroutine` The Python coroutine to await.
-    pub fn to_future(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
-        self.py_loop.to_future(py, self._context_ref(py), coroutine)
+    pub fn coro_to_fut(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+        self.py_loop.coro_to_fut(py, self._context_ref(py), coroutine)
     }
 }
 
@@ -224,7 +230,7 @@ impl TaskLocals {
 /// * `py` - The GIL hold token.
 /// * `locals` - The task locals to execute the future with, if applicable.
 /// * `fut` The future to convert into a Python coroutine.
-pub fn local_future_into_py<R, T>(
+pub fn local_fut_into_coro<R, T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + 'static,
@@ -260,7 +266,7 @@ where
 /// * `py` - The GIL hold token.
 /// * `locals` - The task locals to execute the future with, if applicable.
 /// * `fut` The future to convert into a Python coroutine.
-pub fn future_into_py<R, T>(
+pub fn fut_into_coro<R, T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + Send + 'static,
@@ -295,10 +301,10 @@ where
 /// # Arguments
 /// * `py` - The GIL hold token.
 /// * `coroutine` - The coroutine convert.
-pub fn to_future<R: RustRuntime>(
+pub fn coro_to_fut<R: RustRuntime>(
     py: Python,
     coroutine: &PyAny,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     // TODO: handling when None
-    R::get_locals(py).unwrap().to_future(py, coroutine)
+    R::get_locals(py).unwrap().coro_to_fut(py, coroutine)
 }

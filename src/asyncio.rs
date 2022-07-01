@@ -132,7 +132,7 @@ impl PyLoop for Asyncio {
         Ok(())
     }
 
-    fn await_soon(
+    fn call_soon_async(
         &self,
         py: Python,
         context: Option<&PyAny>,
@@ -148,7 +148,7 @@ impl PyLoop for Asyncio {
         Ok(())
     }
 
-    fn to_future(
+    fn coro_to_fut(
         &self,
         py: Python,
         context: Option<&PyAny>,
