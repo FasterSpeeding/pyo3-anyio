@@ -13,10 +13,7 @@ repos:
     rev: v1.0
     hooks:
     - id: fmt
-  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-    rev: v2.4.0
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
     hooks:
-    - id: pretty-format-rust
-      args: [--autofix]
-    - id: pretty-format-toml
-      args: [--autofix]
+    - id: fmt
