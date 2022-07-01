@@ -133,7 +133,7 @@ impl TaskLocals {
 
     pub fn clone_py(&self, py: Python) -> Self {
         TaskLocals {
-            py_loop: self.py_loop.clone_box(),
+            py_loop: self.py_loop.clone(),
             context: self.context.as_ref().map(|value| value.clone_ref(py)),
         }
     }
@@ -142,13 +142,7 @@ impl TaskLocals {
         self.context.as_ref().map(|value| value.as_ref(py))
     }
 
-    pub fn call_soon(
-        &self,
-        py: Python,
-        callback: &PyAny,
-        args: &[PyObject], // TODO: possible impl IntoIterator<Item = T>
-        kwargs: Option<&PyDict>,
-    ) -> PyResult<()> {
+    pub fn call_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
             .call_soon(py, self._context_ref(py), callback, args, kwargs)
     }
@@ -174,8 +168,8 @@ impl TaskLocals {
         self.await_soon(py, callback, args, None)
     }
 
-    pub fn await_coroutine(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
-        self.py_loop.await_coroutine(py, self._context_ref(py), coroutine)
+    pub fn to_future(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+        self.py_loop.to_future(py, self._context_ref(py), coroutine)
     }
 }
 
@@ -244,5 +238,5 @@ pub fn to_future<R: RustRuntime>(
     coroutine: &PyAny,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     // TODO: handling when None
-    R::get_locals(py).unwrap().await_coroutine(py, coroutine)
+    R::get_locals(py).unwrap().to_future(py, coroutine)
 }

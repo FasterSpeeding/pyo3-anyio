@@ -146,7 +146,7 @@ impl PyLoop for Asyncio {
         Ok(())
     }
 
-    fn await_coroutine(
+    fn to_future(
         &self,
         py: Python,
         context: Option<&PyAny>,

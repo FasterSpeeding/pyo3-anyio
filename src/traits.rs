@@ -58,7 +58,7 @@ pub trait PyLoop: Send {
         py: Python,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject], // TODO: possible impl IntoIterator<Item = T>
+        args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
     fn call_soon0(&self, py: Python, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
@@ -81,11 +81,17 @@ pub trait PyLoop: Send {
     fn await_soon1(&self, py: Python, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.await_soon(py, context, callback, args, None)
     }
-    fn await_coroutine(
+    fn to_future(
         &self,
         py: Python,
         context: Option<&PyAny>,
         coroutine: &PyAny,
     ) -> PyResult<BoxedFuture<PyResult<PyObject>>>;
     fn clone_box(&self) -> Box<dyn PyLoop>;
+}
+
+impl Clone for Box<dyn PyLoop> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
 }

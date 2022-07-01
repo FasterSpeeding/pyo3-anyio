@@ -147,7 +147,7 @@ impl PyLoop for Trio {
         Ok(())
     }
 
-    fn await_coroutine(
+    fn to_future(
         &self,
         py: Python,
         context: Option<&PyAny>,
