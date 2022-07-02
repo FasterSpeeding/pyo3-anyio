@@ -118,46 +118,46 @@ impl Asyncio {
 impl PyLoop for Asyncio {
     fn call_soon(
         &self,
-        py: Python,
         context: Option<&PyAny>,
         callback: &PyAny,
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
         self.event_loop.call_method1(
-            py,
+            callback.py(),
             "call_soon_threadsafe",
-            (WrapCall::py(py, context, callback), PyTuple::new(py, args), kwargs),
+            (
+                WrapCall::py(context, callback),
+                PyTuple::new(callback.py(), args),
+                kwargs,
+            ),
         )?;
         Ok(())
     }
 
     fn call_soon_async(
         &self,
-        py: Python,
         context: Option<&PyAny>,
         callback: &PyAny,
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
-        self.call_soon1(py, context, import_asyncio(py)?.getattr("create_task")?, &[
-            WrapCall::py(py, context, callback),
+        let py = callback.py();
+        self.call_soon1(context, import_asyncio(py)?.getattr("create_task")?, &[
+            WrapCall::py(context, callback),
             PyTuple::new(py, args).to_object(py),
             kwargs.to_object(py),
         ])?;
         Ok(())
     }
 
-    fn coro_to_fut(
-        &self,
-        py: Python,
-        context: Option<&PyAny>,
-        coroutine: &PyAny,
-    ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+    fn coro_to_fut(&self, context: Option<&PyAny>, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
+        let py = coroutine.py();
         let one_shot = AsyncioHook { sender }.into_py(py);
 
-        self.call_soon1(py, None, CreateEvent::py(py, context).as_ref(py), &[
+        let py = coroutine.py();
+        self.call_soon1(None, CreateEvent::py(py, context).as_ref(py), &[
             self.event_loop.clone_ref(py),
             coroutine.to_object(py),
             one_shot.getattr(py, "callback")?,
