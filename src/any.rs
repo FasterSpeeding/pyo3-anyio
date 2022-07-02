@@ -34,7 +34,7 @@ use std::future::Future;
 
 use once_cell::sync::OnceCell;
 use pyo3::types::PyDict;
-use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
+use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
 
 use crate::traits::{BoxedFuture, PyLoop, RustRuntime};
 
@@ -42,9 +42,9 @@ use crate::traits::{BoxedFuture, PyLoop, RustRuntime};
 static PY_ONE_SHOT: OnceCell<PyObject> = OnceCell::new();
 
 
-fn py_one_shot(py: Python) -> PyResult<&PyAny> {
-    PY_ONE_SHOT
-        .get_or_try_init(|| {
+fn py_one_shot(py: Python) -> (&PyAny, PyObject, PyObject) {
+    let one_shot = PY_ONE_SHOT
+        .get_or_init(|| {
             let globals = PyDict::new(py);
             py.run(
                 r#"
@@ -87,12 +87,18 @@ class OneShotChannel:
         "#,
                 Some(globals),
                 None,
-            )?;
+            )
+            .unwrap();
 
-            Ok::<_, PyErr>(globals.get_item("OneShotChannel").unwrap().to_object(py))
-        })?
+            globals.get_item("OneShotChannel").unwrap().to_object(py)
+        })
         .as_ref(py)
         .call0()
+        .unwrap();
+
+    let set_value = one_shot.getattr("set").unwrap().to_object(py);
+    let set_exception = one_shot.getattr("set_exception").unwrap().to_object(py);
+    (one_shot, set_value, set_exception)
 }
 
 /// Task locals used to track the current event loop and `contextvar` context.
@@ -106,19 +112,24 @@ impl TaskLocals {
     /// Create a new task locals.
     ///
     /// # Arguments
+    ///
     /// * `py_loop` - The Python event loop this is bound to.
     /// * `context` - The `contextvar` context this is bound to, if applicable.
+    #[must_use]
     pub fn new(py_loop: Box<dyn PyLoop>, context: Option<PyObject>) -> Self {
         Self { py_loop, context }
     }
 
     /// Create a new task locals from the current context.
     ///
-    /// This will return a PyError if there is no running event loop in this
-    /// thread.
-    ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
+    ///
+    /// * `py` - The GIL token.
+    ///
+    /// # Errors
+    ///
+    /// Will return a `pyo3::PyErr` if there is no running event loop in this
+    /// thread.
     pub fn default(py: Python) -> PyResult<Self> {
         Ok(Self::new(crate::get_running_loop(py)?, None))
     }
@@ -129,7 +140,9 @@ impl TaskLocals {
     /// holding the GIL.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
+    ///
+    /// * `py` - The GIL token.
+    #[must_use]
     pub fn clone_py(&self, py: Python) -> Self {
         Self {
             py_loop: self.py_loop.clone(),
@@ -144,9 +157,17 @@ impl TaskLocals {
     /// Call a Python function soon in this event loop.
     ///
     /// # Arguments
+    ///
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     pub fn call_soon(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
             .call_soon(self._context_ref(callback.py()), callback, args, kwargs)
@@ -155,7 +176,15 @@ impl TaskLocals {
     /// Call a Python function soon (with no arguments) in this event loop.
     ///
     /// # Arguments
+    ///
     /// * `callback` - The function to call.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     pub fn call_soon0(&self, callback: &PyAny) -> PyResult<()> {
         self.call_soon(callback, &[], None)
     }
@@ -164,18 +193,35 @@ impl TaskLocals {
     /// event loop.
     ///
     /// # Arguments
+    ///
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     pub fn call_soon1(&self, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.call_soon(callback, args, None)
     }
 
     /// Call an async Python function soon in this event loop.
     ///
+    ///
     /// # Arguments
+    ///
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     pub fn call_soon_async(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
             .call_soon_async(self._context_ref(callback.py()), callback, args, kwargs)
@@ -185,7 +231,14 @@ impl TaskLocals {
     /// loop.
     ///
     /// # Arguments
+    ///
     /// * `callback` - The function to call.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     pub fn call_soon_async0(&self, callback: &PyAny) -> PyResult<()> {
         self.call_soon_async(callback, &[], None)
     }
@@ -194,8 +247,16 @@ impl TaskLocals {
     /// arguments) in this event loop.
     ///
     /// # Arguments
+    ///
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     pub fn call_soon_async1(&self, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.call_soon_async(callback, args, None)
     }
@@ -205,34 +266,39 @@ impl TaskLocals {
     /// This will spawn the coroutine as a task in this event loop.
     ///
     /// # Arguments
+    ///
     /// * `coroutine` The Python coroutine to await.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     pub fn coro_to_fut(&self, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         self.py_loop.coro_to_fut(self._context_ref(coroutine.py()), coroutine)
     }
 }
 
-/// Convert a !Send Rust future into a Python coroutine.
+/// Convert a `!Send` Rust future into a Python coroutine.
 ///
 /// # Arguments
-/// * `py` - The GIL hold token.
+///
+/// * `py` - The GIL token.
 /// * `locals` - The task locals to execute the future with, if applicable.
 /// * `fut` The future to convert into a Python coroutine.
 pub fn local_fut_into_coro<R, T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + 'static,
-) -> PyResult<&PyAny>
+) -> &PyAny
 where
     R: RustRuntime,
     T: IntoPy<PyObject>, {
-    let channel = py_one_shot(py)?;
-    let set_value = channel.getattr("set")?.to_object(py);
-    let set_exception = channel.getattr("set_exception")?.to_object(py);
-
-    R::spawn_local(R::scope_local(locals, async move {
+    let (channel, set_value, set_exception) = py_one_shot(py);
+    R::spawn_local(R::scope_local(locals.clone_py(py), async move {
         let result = fut.await;
         Python::with_gil(|py| {
-            let locals = R::get_locals(py).unwrap();
             match result {
                 Ok(value) => locals.call_soon1(set_value.as_ref(py), &[value.into_py(py)]).unwrap(),
                 Err(err) => locals
@@ -242,31 +308,29 @@ where
         });
     }));
 
-    Ok(channel)
+    channel
 }
 
 /// Convert a Rust future into a Python coroutine.
 ///
 /// # Arguments
-/// * `py` - The GIL hold token.
+///
+/// * `py` - The GIL token.
 /// * `locals` - The task locals to execute the future with, if applicable.
 /// * `fut` The future to convert into a Python coroutine.
 pub fn fut_into_coro<R, T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + Send + 'static,
-) -> PyResult<&PyAny>
+) -> &PyAny
 where
     R: RustRuntime,
     T: IntoPy<PyObject>, {
-    let channel = py_one_shot(py)?;
-    let set_value = channel.getattr("set")?.to_object(py);
-    let set_exception = channel.getattr("set_exception")?.to_object(py);
+    let (channel, set_value, set_exception) = py_one_shot(py);
 
-    R::spawn(R::scope(locals, async move {
+    R::spawn(R::scope(locals.clone_py(py), async move {
         let result = fut.await;
         Python::with_gil(|py| {
-            let locals = R::get_locals(py).unwrap();
             match result {
                 Ok(value) => locals.call_soon1(set_value.as_ref(py), &[value.into_py(py)]).unwrap(),
                 Err(err) => locals
@@ -276,16 +340,24 @@ where
         });
     }));
 
-    Ok(channel)
+    channel
 }
 
 /// Convert a Python coroutine to a Rust future.
 ///
 /// # Arguments
+///
 /// * `coroutine` - The coroutine convert.
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+///
+/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if the
+/// loop isn't active.
 pub fn coro_to_fut<R: RustRuntime>(
     coroutine: &PyAny,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
-    // TODO: handling when None
+    // TODO: handle when this is None
     R::get_locals(coroutine.py()).unwrap().coro_to_fut(coroutine)
 }

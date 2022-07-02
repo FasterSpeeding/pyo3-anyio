@@ -104,6 +104,13 @@ pub struct Asyncio {
 
 impl Asyncio {
     /// Get the current Asyncio event loop, if this is in an active loop.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to get the current loop.
+    ///
+    /// This likely indicates that an incompatibility or issue with the
+    /// current Asyncio install.
     pub fn get_running_loop(py: Python) -> PyResult<Option<Self>> {
         match import_asyncio(py)?.call_method0("get_running_loop") {
             Ok(event_loop) => Ok(Some(Self {
@@ -160,7 +167,7 @@ impl PyLoop for Asyncio {
         self.call_soon1(None, CreateEvent::py(py, context).as_ref(py), &[
             self.event_loop.clone_ref(py),
             coroutine.to_object(py),
-            one_shot.getattr(py, "callback")?,
+            one_shot.getattr(py, "callback").unwrap(),
         ])?;
 
         Ok(Box::pin(async move { receiver.await.unwrap() }))
