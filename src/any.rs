@@ -185,7 +185,6 @@ impl TaskLocals {
     /// loop.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
     pub fn call_soon_async0(&self, callback: &PyAny) -> PyResult<()> {
         self.call_soon_async(callback, &[], None)
