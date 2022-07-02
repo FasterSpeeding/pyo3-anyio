@@ -117,32 +117,34 @@ impl Trio {
 impl PyLoop for Trio {
     fn call_soon(
         &self,
-        py: Python,
         context: Option<&PyAny>,
         callback: &PyAny,
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
         self.token.call_method1(
-            py,
+            callback.py(),
             "run_sync_soon",
-            (WrapCall::py(py, context, callback), PyTuple::new(py, args), kwargs),
+            (
+                WrapCall::py(context, callback),
+                PyTuple::new(callback.py(), args),
+                kwargs,
+            ),
         )?;
         Ok(())
     }
 
     fn call_soon_async(
         &self,
-        py: Python,
         context: Option<&PyAny>,
         callback: &PyAny,
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
+        let py = callback.py();
         let args = &[&[callback.to_object(py)], args].concat();
-        let wrapped = WrapCall::py(py, None, import_trio_low(py)?.getattr("spawn_system_task")?);
+        let wrapped = WrapCall::py(None, import_trio_low(py)?.getattr("spawn_system_task")?);
         self.call_soon(
-            py,
             None,
             wrapped.as_ref(py),
             &[PyTuple::new(py, args).to_object(py), kwargs.to_object(py)],
@@ -152,17 +154,12 @@ impl PyLoop for Trio {
         Ok(())
     }
 
-    fn coro_to_fut(
-        &self,
-        py: Python,
-        context: Option<&PyAny>,
-        coroutine: &PyAny,
-    ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+    fn coro_to_fut(&self, context: Option<&PyAny>, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+        let py = coroutine.py();
         let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
         let one_shot = TrioHook { sender }.into_py(py);
 
         self.call_soon(
-            py,
             None,
             import_trio_low(py)?.getattr("spawn_system_task")?,
             &[wrap_coro(py)?.to_object(py), coroutine.to_object(py), one_shot],

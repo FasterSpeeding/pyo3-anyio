@@ -140,11 +140,7 @@ where
 /// Convert a Python coroutine to a Rust future.
 ///
 /// # Arguments
-/// * `py` - The GIL hold token.
 /// * `coroutine` - The coroutine convert.
-pub fn coro_to_fut(
-    py: Python,
-    coroutine: &PyAny,
-) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
-    crate::any::coro_to_fut::<Tokio>(py, coroutine)
+pub fn coro_to_fut(coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+    crate::any::coro_to_fut::<Tokio>(coroutine)
 }

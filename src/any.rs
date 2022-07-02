@@ -144,51 +144,41 @@ impl TaskLocals {
     /// Call a Python function soon in this event loop.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
-    pub fn call_soon(&self, py: Python, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
+    pub fn call_soon(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
-            .call_soon(py, self._context_ref(py), callback, args, kwargs)
+            .call_soon(self._context_ref(callback.py()), callback, args, kwargs)
     }
 
     /// Call a Python function soon (with no arguments) in this event loop.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
-    pub fn call_soon0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
-        self.call_soon(py, callback, &[], None)
+    pub fn call_soon0(&self, callback: &PyAny) -> PyResult<()> {
+        self.call_soon(callback, &[], None)
     }
 
     /// Call a Python function soon (with only positional arguments) in this
     /// event loop.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
-    pub fn call_soon1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
-        self.call_soon(py, callback, args, None)
+    pub fn call_soon1(&self, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+        self.call_soon(callback, args, None)
     }
 
     /// Call an async Python function soon in this event loop.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
-    pub fn call_soon_async(
-        &self,
-        py: Python,
-        callback: &PyAny,
-        args: &[PyObject],
-        kwargs: Option<&PyDict>,
-    ) -> PyResult<()> {
+    pub fn call_soon_async(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
-            .call_soon_async(py, self._context_ref(py), callback, args, kwargs)
+            .call_soon_async(self._context_ref(callback.py()), callback, args, kwargs)
     }
 
     /// Call an async Python function soon (with no arguments) in this event
@@ -197,19 +187,18 @@ impl TaskLocals {
     /// # Arguments
     /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
-    pub fn call_soon_async0(&self, py: Python, callback: &PyAny) -> PyResult<()> {
-        self.call_soon_async(py, callback, &[], None)
+    pub fn call_soon_async0(&self, callback: &PyAny) -> PyResult<()> {
+        self.call_soon_async(callback, &[], None)
     }
 
     /// Call an async Python function soon (with only positional arguments
     /// arguments) in this event loop.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
-    pub fn call_soon_async1(&self, py: Python, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
-        self.call_soon_async(py, callback, args, None)
+    pub fn call_soon_async1(&self, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+        self.call_soon_async(callback, args, None)
     }
 
     /// Convert a Python coroutine to a Rust future.
@@ -217,10 +206,9 @@ impl TaskLocals {
     /// This will spawn the coroutine as a task in this event loop.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
     /// * `coroutine` The Python coroutine to await.
-    pub fn coro_to_fut(&self, py: Python, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
-        self.py_loop.coro_to_fut(py, self._context_ref(py), coroutine)
+    pub fn coro_to_fut(&self, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+        self.py_loop.coro_to_fut(self._context_ref(coroutine.py()), coroutine)
     }
 }
 
@@ -247,11 +235,9 @@ where
         Python::with_gil(|py| {
             let locals = R::get_locals(py).unwrap();
             match result {
-                Ok(value) => locals
-                    .call_soon1(py, set_value.as_ref(py), &[value.into_py(py)])
-                    .unwrap(),
+                Ok(value) => locals.call_soon1(set_value.as_ref(py), &[value.into_py(py)]).unwrap(),
                 Err(err) => locals
-                    .call_soon1(py, set_exception.as_ref(py), &[err.to_object(py)])
+                    .call_soon1(set_exception.as_ref(py), &[err.to_object(py)])
                     .unwrap(),
             };
         });
@@ -283,11 +269,9 @@ where
         Python::with_gil(|py| {
             let locals = R::get_locals(py).unwrap();
             match result {
-                Ok(value) => locals
-                    .call_soon1(py, set_value.as_ref(py), &[value.into_py(py)])
-                    .unwrap(),
+                Ok(value) => locals.call_soon1(set_value.as_ref(py), &[value.into_py(py)]).unwrap(),
                 Err(err) => locals
-                    .call_soon1(py, set_exception.as_ref(py), &[err.to_object(py)])
+                    .call_soon1(set_exception.as_ref(py), &[err.to_object(py)])
                     .unwrap(),
             };
         });
@@ -299,12 +283,10 @@ where
 /// Convert a Python coroutine to a Rust future.
 ///
 /// # Arguments
-/// * `py` - The GIL hold token.
 /// * `coroutine` - The coroutine convert.
 pub fn coro_to_fut<R: RustRuntime>(
-    py: Python,
     coroutine: &PyAny,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     // TODO: handling when None
-    R::get_locals(py).unwrap().coro_to_fut(py, coroutine)
+    R::get_locals(coroutine.py()).unwrap().coro_to_fut(coroutine)
 }

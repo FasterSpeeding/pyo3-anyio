@@ -65,7 +65,8 @@ pub(crate) struct WrapCall {
 }
 
 impl WrapCall {
-    fn py(py: Python, context: Option<&PyAny>, callback: &PyAny) -> PyObject {
+    fn py(context: Option<&PyAny>, callback: &PyAny) -> PyObject {
+        let py = callback.py();
         Self {
             callback: callback.to_object(py),
             context: context.map(|value| value.to_object(py)),
