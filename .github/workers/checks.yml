@@ -1,0 +1,34 @@
+name: Run checks
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: "0 12 * * 6"
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain
+        with:
+          profile: minimal
+          components: clippy, rustfmt
+
+      - name: Check formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: "fmt --check"
+
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy

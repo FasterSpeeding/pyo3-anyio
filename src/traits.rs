@@ -54,13 +54,13 @@ pub trait RustRuntime {
     /// Spawn a future on this runtime.
     fn spawn(fut: impl Future<Output = ()> + Send + 'static) -> Self::JoinHandle;
 
-    /// Spawn a !Send future on this runtime
+    /// Spawn a `!Send` future on this runtime
     fn spawn_local(fut: impl Future<Output = ()> + 'static) -> Self::JoinHandle;
 
     /// Scope the task locals for a future.
     fn scope<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 'static) -> BoxedFuture<R>;
 
-    /// Set the task locals for a !Send future.
+    /// Set the task locals for a `!Send` future.
     fn scope_local<R>(
         locals: TaskLocals,
         fut: impl Future<Output = R> + 'static,
@@ -72,11 +72,19 @@ pub trait PyLoop: Send {
     /// Call a Python function soon in this event loop.
     ///
     /// # Arguments
+    ///
     /// * `context` - The Python `contextvar` context to call this function in,
     ///   if applicable.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     fn call_soon(
         &self,
         context: Option<&PyAny>,
@@ -87,9 +95,17 @@ pub trait PyLoop: Send {
     /// Call a Python function soon (with no arguments) in this event loop.
     ///
     /// # Arguments
+    ///
     /// * `context` - The Python `contextvar` context to call this function in,
     ///   if applicable.
     /// * `callback` - The function to call.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     fn call_soon0(&self, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
         self.call_soon(context, callback, &[], None)
     }
@@ -97,20 +113,35 @@ pub trait PyLoop: Send {
     /// event loop.
     ///
     /// # Arguments
+    ///
     /// * `context` - The Python `contextvar` context to call this function in,
     ///   if applicable.
     /// * `callback` - The function to call.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     fn call_soon1(&self, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.call_soon(context, callback, args, None)
     }
     /// Call an async Python function soon in this event loop.
     ///
     /// # Arguments
+    ///
     /// * `context` - The Python `contextvar` context to call this function in,
     ///   if applicable.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     fn call_soon_async(
         &self,
         context: Option<&PyAny>,
@@ -122,11 +153,18 @@ pub trait PyLoop: Send {
     /// loop.
     ///
     /// # Arguments
+    ///
     /// * `context` - The Python `contextvar` context to call this function in,
     ///   if applicable.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     fn call_soon_async0(&self, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
         self.call_soon_async(context, callback, &[], None)
     }
@@ -134,11 +172,18 @@ pub trait PyLoop: Send {
     /// this event loop.
     ///
     /// # Arguments
+    ///
     /// * `context` - The Python `contextvar` context to call this function in,
     ///   if applicable.
     /// * `callback` - The function to call.
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     fn call_soon_async1(&self, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
         self.call_soon_async(context, callback, args, None)
     }
@@ -148,9 +193,17 @@ pub trait PyLoop: Send {
     /// This will spawn the coroutine as a task in this event loop.
     ///
     /// # Arguments
+    ///
     /// * `context` - The Python `contextvar` context to await this coroutine
     ///   in, if applicable.
     /// * `coroutine` The Python coroutine to await.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
     fn coro_to_fut(&self, context: Option<&PyAny>, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>>;
 
     #[doc(hidden)] // Internal method used to implement clone for Box<PyLoop>

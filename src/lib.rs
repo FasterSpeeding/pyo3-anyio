@@ -29,9 +29,12 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-//! PyO3 utility bindings for Anyio's event loop.
+//! `PyO3` utility bindings for Anyio's event loop.
 
+#![deny(clippy::pedantic)]
 #![allow(clippy::borrow_deref_ref)] // Leads to a ton of false positives around args of py types.
+#![allow(clippy::missing_panics_doc)] // TODO: finalise and document the panics
+#![allow(clippy::used_underscore_binding)] // Doesn't work with macros
 #![warn(missing_docs)]
 
 use once_cell::sync::OnceCell;
@@ -90,11 +93,13 @@ impl WrapCall {
 
 /// Get the current thread's active event loop.
 ///
+/// # Errors
+///
 /// This will return a `Err(pyo3::PyErr)` where the inner type is
 /// `pyo3::exceptions::PyRuntimeError` if there is no running event loop.
 pub fn get_running_loop(py: Python) -> PyResult<Box<dyn PyLoop>> {
     // sys.modules is used here to avoid unnecessarily trying to import asyncio or
-    // trio if it hasn't been imported yet or isn't installed.
+    // Trio if it hasn't been imported yet or isn't installed.
     let modules = import_sys_modules(py)?;
 
     // TODO: switch to && let Some(loop) = ... once https://github.com/rust-lang/rust/pull/94927

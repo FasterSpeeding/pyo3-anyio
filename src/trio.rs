@@ -47,9 +47,9 @@ fn import_trio_low(py: Python) -> PyResult<&PyAny> {
 }
 
 
-fn wrap_coro(py: Python) -> PyResult<&PyAny> {
+fn wrap_coro(py: Python) -> &PyAny {
     WRAP_CORO
-        .get_or_try_init(|| {
+        .get_or_init(|| {
             let globals = PyDict::new(py);
             py.run(
                 r#"
@@ -65,11 +65,12 @@ async def wrap_coro(coro, one_shot, /):
             "#,
                 Some(globals),
                 None,
-            )?;
+            )
+            .unwrap();
 
-            Ok::<_, PyErr>(globals.get_item("wrap_coro").unwrap().to_object(py))
+            globals.get_item("wrap_coro").unwrap().to_object(py)
         })
-        .map(|value| value.as_ref(py))
+        .as_ref(py)
 }
 
 
@@ -102,7 +103,14 @@ impl Trio {
     /// Get the current Trio token if this is in an active Trio loop.
     ///
     /// # Arguments
-    /// * `py` - The GIL hold token.
+    ///
+    /// * `py` - The GIL token.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if this failed to get the current loop.
+    /// This likely indicates that an incompatibility or issue with the
+    /// current Trio install.
     pub fn get_running_loop(py: Python) -> PyResult<Option<Self>> {
         match import_trio_low(py)?.call_method0("current_trio_token") {
             Ok(token) => Ok(Some(Self {
@@ -162,7 +170,7 @@ impl PyLoop for Trio {
         self.call_soon(
             None,
             import_trio_low(py)?.getattr("spawn_system_task")?,
-            &[wrap_coro(py)?.to_object(py), coroutine.to_object(py), one_shot],
+            &[wrap_coro(py).to_object(py), coroutine.to_object(py), one_shot],
             Some([("context", context)].into_py_dict(py)),
         )?;
 
