@@ -130,14 +130,15 @@ impl PyLoop for Asyncio {
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
+        let py = callback.py();
+        if !self.event_loop.call_method0(py, "is_running")?.is_true(py)? {
+            return Err(PyRuntimeError::new_err("Event loop isn't active"));
+        };
+
         self.event_loop.call_method1(
             callback.py(),
             "call_soon_threadsafe",
-            (
-                WrapCall::py(context, callback),
-                PyTuple::new(callback.py(), args),
-                kwargs,
-            ),
+            (WrapCall::py(context, callback), PyTuple::new(py, args), kwargs),
         )?;
         Ok(())
     }
