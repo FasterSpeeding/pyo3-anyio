@@ -32,15 +32,24 @@
 //! Functions and structs used for interacting with any Rust runtime.
 use std::future::Future;
 
-use once_cell::sync::OnceCell;
-use pyo3::types::PyDict;
+use once_cell::sync::OnceCell as OnceLock;
+use once_cell::unsync::OnceCell;
+use pyo3::types::{IntoPyDict, PyDict};
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
 
 use crate::traits::{BoxedFuture, PyLoop, RustRuntime};
 
-// TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
-static PY_ONE_SHOT: OnceCell<PyObject> = OnceCell::new();
 
+// TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
+static ANYIO: OnceLock<PyObject> = OnceLock::new();
+static PY_ONE_SHOT: OnceLock<PyObject> = OnceLock::new();
+
+
+fn import_anyio(py: Python) -> PyResult<&PyAny> {
+    ANYIO
+        .get_or_try_init(|| Ok(py.import("anyio")?.to_object(py)))
+        .map(|value| value.as_ref(py))
+}
 
 fn py_one_shot(py: Python) -> (&PyAny, PyObject, PyObject) {
     let one_shot = PY_ONE_SHOT
@@ -104,9 +113,10 @@ class OneShotChannel:
 /// Task locals used to track the current event loop and `contextvar` context.
 #[derive(Clone)]
 pub struct TaskLocals {
-    py_loop: Box<dyn PyLoop>,
+    py_loop: OnceCell<Box<dyn PyLoop>>,
     context: Option<PyObject>,
 }
+
 
 impl TaskLocals {
     /// Create a new task locals.
@@ -117,7 +127,22 @@ impl TaskLocals {
     /// * `context` - The `contextvar` context this is bound to, if applicable.
     #[must_use]
     pub fn new(py_loop: Box<dyn PyLoop>, context: Option<PyObject>) -> Self {
-        Self { py_loop, context }
+        Self {
+            py_loop: OnceCell::from(py_loop),
+            context,
+        }
+    }
+
+    #[allow(clippy::borrowed_box)]
+    pub(self) fn get_py_loop(&self, py: Python) -> PyResult<&Box<dyn PyLoop>> {
+        self.py_loop.get_or_try_init(|| crate::get_running_loop(py))
+    }
+
+    pub(crate) fn set_py_loop(&self, py_loop: Box<dyn PyLoop>) {
+        self.py_loop
+            .set(py_loop)
+            .ok()
+            .expect("Python loop already set for this task");
     }
 
     /// Create a new task locals from the current context.
@@ -150,7 +175,7 @@ impl TaskLocals {
         }
     }
 
-    fn _context_ref<'a>(&'a self, py: Python<'a>) -> Option<&'a PyAny> {
+    pub(self) fn _context_ref<'a>(&'a self, py: Python<'a>) -> Option<&'a PyAny> {
         self.context.as_ref().map(|value| value.as_ref(py))
     }
 
@@ -169,8 +194,9 @@ impl TaskLocals {
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
     pub fn call_soon(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
-        self.py_loop
-            .call_soon(self._context_ref(callback.py()), callback, args, kwargs)
+        let py = callback.py();
+        self.get_py_loop(py)?
+            .call_soon(self._context_ref(py), callback, args, kwargs)
     }
 
     /// Call a Python function soon (with no arguments) in this event loop.
@@ -223,8 +249,9 @@ impl TaskLocals {
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
     pub fn call_soon_async(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
-        self.py_loop
-            .call_soon_async(self._context_ref(callback.py()), callback, args, kwargs)
+        let py = callback.py();
+        self.get_py_loop(py)?
+            .call_soon_async(self._context_ref(py), callback, args, kwargs)
     }
 
     /// Call an async Python function soon (with no arguments) in this event
@@ -276,7 +303,8 @@ impl TaskLocals {
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
     pub fn coro_to_fut(&self, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
-        self.py_loop.coro_to_fut(self._context_ref(coroutine.py()), coroutine)
+        let py = coroutine.py();
+        self.get_py_loop(py)?.coro_to_fut(self._context_ref(py), coroutine)
     }
 }
 
@@ -355,9 +383,42 @@ where
 ///
 /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if the
 /// loop isn't active.
-pub fn coro_to_fut<R: RustRuntime>(
-    coroutine: &PyAny,
-) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+pub fn coro_to_fut<R>(coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static>
+where
+    R: RustRuntime, {
     // TODO: handle when this is None
     R::get_locals(coroutine.py()).unwrap().coro_to_fut(coroutine)
+}
+
+/// Run the given future in an asynchronous Python event loop.
+///
+/// # Arguments
+///
+/// * `py` - The GIL token.
+/// * `fut` - The future to run in an asynchronous Python event loop.
+/// * `backend` - The Python async backend to run this in. This may be either
+///   "asyncio" or "trio".
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyError` if this failed to start the event loop.
+///
+/// This may indicate that an invalid value was passed for `backend` or that an
+/// event loop is already active in the current thread.
+pub fn run<R, T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static, backend: &str) -> PyResult<T>
+where
+    R: RustRuntime,
+    T: Send + Sync + 'static, {
+    let task_locals = TaskLocals {
+        py_loop: OnceCell::new(),
+        context: None,
+    };
+    let (mut sender, receiver) = async_oneshot::oneshot::<PyResult<T>>();
+    let coro = fut_into_coro::<R, ()>(py, task_locals, async move {
+        let result = fut.await;
+        sender.send(result).unwrap();
+        Ok(())
+    });
+    import_anyio(py)?.call_method("run", (coro,), Some([("backend", backend)].into_py_dict(py)))?;
+    receiver.try_recv().ok().unwrap()
 }

@@ -37,7 +37,7 @@
 #![allow(clippy::used_underscore_binding)] // Doesn't work with macros
 #![warn(missing_docs)]
 
-use once_cell::sync::OnceCell;
+use once_cell::sync::OnceCell as OnceLock;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
@@ -53,7 +53,7 @@ pub use crate::trio::Trio;
 
 
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
-static SYS_MODULES: OnceCell<PyObject> = OnceCell::new();
+static SYS_MODULES: OnceLock<PyObject> = OnceLock::new();
 
 fn import_sys_modules(py: Python) -> PyResult<&PyAny> {
     SYS_MODULES

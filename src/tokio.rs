@@ -34,11 +34,11 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use once_cell::sync::Lazy;
+use once_cell::sync::Lazy as LazyLock;
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
 use crate::any::TaskLocals;
-use crate::traits::BoxedFuture;
+use crate::traits::{BoxedFuture, PyLoop};
 
 tokio::task_local! {
     static LOCALS: TaskLocals
@@ -46,7 +46,7 @@ tokio::task_local! {
 
 
 // TODO: switch to std::sync::LazyLock once https://github.com/rust-lang/rust/issues/74465 is done.
-static EXECUTOR: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
+static EXECUTOR: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     let mut builder = tokio::runtime::Builder::new_multi_thread();
     builder.enable_all();
     builder.build().expect("Failed to start executor")
@@ -68,6 +68,12 @@ impl crate::traits::RustRuntime for Tokio {
 
     fn get_locals(py: Python) -> Option<TaskLocals> {
         LOCALS.try_with(|value| value.clone_py(py)).ok()
+    }
+
+    fn set_loop(py_loop: Box<dyn PyLoop>) {
+        LOCALS
+            .try_with(|value| value.set_py_loop(py_loop))
+            .expect("No locals set for this task");
     }
 
     fn scope<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 'static) -> BoxedFuture<R> {
@@ -165,4 +171,25 @@ where
 /// the loop isn't active.
 pub fn coro_to_fut(coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     crate::any::coro_to_fut::<Tokio>(coroutine)
+}
+
+/// Run the given future in an asynchronous Python event loop.
+///
+/// # Arguments
+///
+/// * `py` - The GIL token.
+/// * `fut` - The future to run in an asynchronous Python event loop.
+/// * `backend` - The Python async backend to run this in. This may be either
+///   "asyncio" or "trio".
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyError` if this failed to start the event loop.
+///
+/// This may indicate that an invalid value was passed for `backend` or that an
+/// event loop is already active in the current thread.
+pub fn run<T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static, backend: &str) -> PyResult<T>
+where
+    T: Send + Sync + 'static, {
+    crate::any::run::<Tokio, T>(py, fut, backend)
 }

@@ -28,7 +28,7 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
-use once_cell::sync::OnceCell;
+use once_cell::sync::OnceCell as OnceLock;
 use pyo3::exceptions::{PyBaseException, PyRuntimeError};
 use pyo3::types::{IntoPyDict, PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
@@ -37,8 +37,8 @@ use crate::traits::{BoxedFuture, PyLoop};
 use crate::WrapCall;
 
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
-static TRIO_LOW: OnceCell<PyObject> = OnceCell::new();
-static WRAP_CORO: OnceCell<PyObject> = OnceCell::new();
+static TRIO_LOW: OnceLock<PyObject> = OnceLock::new();
+static WRAP_CORO: OnceLock<PyObject> = OnceLock::new();
 
 fn import_trio_low(py: Python) -> PyResult<&PyAny> {
     TRIO_LOW
@@ -121,6 +121,7 @@ impl Trio {
         }
     }
 }
+
 
 impl PyLoop for Trio {
     fn call_soon(
