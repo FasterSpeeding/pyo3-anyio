@@ -52,7 +52,7 @@ static EXECUTOR: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     builder.build().expect("Failed to start executor")
 });
 
-pub struct Tokio {}  //  TODO: should this be directly public?
+pub struct Tokio {} //  TODO: should this be directly public?
 
 impl crate::traits::RustRuntime for Tokio {
     type JoinError = tokio::task::JoinError;
