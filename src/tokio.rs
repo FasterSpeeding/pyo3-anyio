@@ -38,7 +38,7 @@ use once_cell::sync::Lazy as LazyLock;
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
 use crate::any::TaskLocals;
-use crate::traits::{BoxedFuture, PyLoop};
+use crate::traits::BoxedFuture;
 
 tokio::task_local! {
     static LOCALS: TaskLocals
@@ -52,7 +52,7 @@ static EXECUTOR: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     builder.build().expect("Failed to start executor")
 });
 
-struct Tokio {}
+pub struct Tokio {}  //  TODO: should this be directly public?
 
 impl crate::traits::RustRuntime for Tokio {
     type JoinError = tokio::task::JoinError;
@@ -68,12 +68,6 @@ impl crate::traits::RustRuntime for Tokio {
 
     fn get_locals(py: Python) -> Option<TaskLocals> {
         LOCALS.try_with(|value| value.clone_py(py)).ok()
-    }
-
-    fn set_loop(py_loop: Box<dyn PyLoop>) {
-        LOCALS
-            .try_with(|value| value.set_py_loop(py_loop))
-            .expect("No locals set for this task");
     }
 
     fn scope<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 'static) -> BoxedFuture<R> {
@@ -98,11 +92,11 @@ impl crate::traits::RustRuntime for Tokio {
 /// # Errors
 ///
 /// Returns `pyo3::PyErr` if there is no running Python event loop in this
-/// thread.
+/// thread or if Anyio isn't installed in the current Python environment.
 pub fn fut_into_coro<T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    Ok(fut_into_coro_with_locals(py, TaskLocals::default(py)?, fut))
+    fut_into_coro_with_locals(py, TaskLocals::default(py)?, fut)
 }
 
 /// Convert a Rust future into a Python coroutine with the passed task locals.
@@ -112,11 +106,15 @@ where
 /// * `py` - The GIL token.
 /// * `locals` - The task locals to execute the future with, if applicable.
 /// * `fut` The future to convert into a Python coroutine.
+///
+/// # Errors
+///
+/// If Anyio isn't installed in the current Python environment.
 pub fn fut_into_coro_with_locals<T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + Send + 'static,
-) -> &PyAny
+) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
     crate::any::fut_into_coro::<Tokio, _>(py, locals, fut)
@@ -132,11 +130,11 @@ where
 /// # Errors
 ///
 /// Returns `pyo3::PyErr` if there is no running Python event loop in this
-/// thread.
+/// thread or if Anyio isn't installed in the current Python environment.
 pub fn local_fut_into_coro<T>(py: Python, fut: impl Future<Output = PyResult<T>> + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    Ok(local_fut_into_coro_with_locals(py, TaskLocals::default(py)?, fut))
+    local_fut_into_coro_with_locals(py, TaskLocals::default(py)?, fut)
 }
 
 /// Convert a `!Send` Rust future into a Python coroutine with the passed task
@@ -147,11 +145,15 @@ where
 /// * `py` - The GIL token.
 /// * `locals` - The task locals to execute the future with, if applicable.
 /// * `fut` The future to convert into a Python coroutine.
+///
+/// # Errors
+///
+/// If Anyio isn't installed in the current Python environment.
 pub fn local_fut_into_coro_with_locals<T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + 'static,
-) -> &PyAny
+) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
     crate::any::local_fut_into_coro::<Tokio, _>(py, locals, fut)

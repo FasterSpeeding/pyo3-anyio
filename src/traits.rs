@@ -51,14 +51,6 @@ pub trait RustRuntime {
     /// Get the current task's set locals.
     fn get_locals(py: Python) -> Option<TaskLocals>;
 
-    /// Set the current task's locals' Python event loop.
-    ///
-    /// # Panics
-    ///
-    /// If there are no locals set for the current task or if the task
-    /// locals already have a set loop.
-    fn set_loop(py_loop: Box<dyn PyLoop>);
-
     /// Spawn a future on this runtime.
     fn spawn(fut: impl Future<Output = ()> + Send + 'static) -> Self::JoinHandle;
 
