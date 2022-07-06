@@ -53,8 +53,8 @@ pub trait RustRuntime {
 
     /// Get the current task's set locals.
     ///
-    /// This should be preferred over `std::clone::Clone` if you are already
-    /// holding the GIL.
+    /// This should be preferred over `RustRuntime::get_locals` if you are
+    /// already holding the GIL.
     fn get_locals_py(py: Python) -> Option<TaskLocals>;
 
     /// Spawn a future on this runtime.

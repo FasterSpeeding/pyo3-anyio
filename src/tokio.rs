@@ -39,7 +39,7 @@ use pyo3::types::PyDict;
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
 use crate::any::TaskLocals;
-use crate::traits::BoxedFuture;
+use crate::traits::{BoxedFuture, RustRuntime};
 
 tokio::task_local! {
     static LOCALS: TaskLocals
@@ -55,7 +55,7 @@ static EXECUTOR: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
 
 struct Tokio {}
 
-impl crate::traits::RustRuntime for Tokio {
+impl RustRuntime for Tokio {
     type JoinError = tokio::task::JoinError;
     type JoinHandle = tokio::task::JoinHandle<()>;
 
@@ -85,6 +85,37 @@ impl crate::traits::RustRuntime for Tokio {
     ) -> Pin<Box<dyn Future<Output = R> + 'static>> {
         Box::pin(LOCALS.scope(locals, fut))
     }
+}
+
+
+/// Get the current task's set locals.
+///
+/// # Arguments
+///
+/// * `py` - The GIL token.
+#[must_use]
+pub fn get_locals_py(py: Python) -> Option<TaskLocals> {
+    Tokio::get_locals_py(py)
+}
+
+/// Set the `pyo3_anyio::any::TaskLocals` for the given `Send` future.
+///
+/// # Arguments
+///
+/// * `locals` - The task locals to set.
+/// * `fut` - The future to set the task locals for.
+pub fn scope<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 'static) -> impl Future<Output = R> {
+    Tokio::scope(locals, fut)
+}
+
+/// Set the `pyo3_anyio::any::TaskLocals` for the given `!Send` future.
+///
+/// # Arguments
+///
+/// * `locals` - The task locals to set.
+/// * `fut` - The future to set the task locals for.
+pub fn scope_local<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 'static) -> impl Future<Output = R> {
+    Tokio::scope_local(locals, fut)
 }
 
 /// Call and await a Python function.
