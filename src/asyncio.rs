@@ -174,7 +174,6 @@ impl Asyncio {
     }
 }
 
-
 impl PyLoop for Asyncio {
     fn await_py(
         &self,

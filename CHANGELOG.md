@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed.
 - `fut_into_coro` now delay initialising the internal `Event` to avoid runtime errors
   being raised if the event loop hasn't been started yet.
-
+- `PyLoop` `call_{}` and `coro_to_fut` methods + the relevant top level functions
+  now consistently error if the Python event loop isn't running regardless of the loop.
 
 [Unreleased]: https://github.com/FasterSpeeding/Alluka/compare/v0.1.0...HEAD

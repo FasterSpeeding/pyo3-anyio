@@ -30,6 +30,7 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 //! Functions and structs used for interacting with any Rust runtime.
+use std::cell::RefCell;
 use std::future::Future;
 
 use once_cell::sync::OnceCell as OnceLock;
@@ -102,7 +103,8 @@ class OneShotChannel:
         "#,
                 Some(globals),
                 None,
-            )?;
+            )
+            .unwrap();
 
             Ok::<_, PyErr>(globals.get_item("OneShotChannel").unwrap().to_object(py))
         })?
@@ -121,7 +123,6 @@ pub struct TaskLocals {
     py_loop: Box<dyn PyLoop>,
     context: Option<PyObject>,
 }
-
 
 impl TaskLocals {
     /// Create a new task locals.
@@ -311,9 +312,8 @@ impl TaskLocals {
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
     pub fn call_soon_async(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
-        let py = callback.py();
         self.py_loop
-            .call_soon_async(self._context_ref(py), callback, args, kwargs)
+            .call_soon_async(self._context_ref(callback.py()), callback, args, kwargs)
     }
 
     /// Call an async Python function soon (with no arguments) in this event
@@ -366,8 +366,7 @@ impl TaskLocals {
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
     pub fn coro_to_fut(&self, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
-        let py = coroutine.py();
-        self.py_loop.coro_to_fut(self._context_ref(py), coroutine)
+        self.py_loop.coro_to_fut(self._context_ref(coroutine.py()), coroutine)
     }
 }
 
@@ -551,5 +550,3 @@ impl Runner {
         self.callback.replace(None).unwrap()(py)
     }
 }
-
-use std::cell::RefCell;
