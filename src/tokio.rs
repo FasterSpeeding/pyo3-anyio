@@ -35,6 +35,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use once_cell::sync::Lazy as LazyLock;
+use pyo3::types::PyDict;
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
 use crate::any::TaskLocals;
@@ -85,6 +86,79 @@ impl crate::traits::RustRuntime for Tokio {
         Box::pin(LOCALS.scope(locals, fut))
     }
 }
+
+/// Call and await a Python function.
+///
+/// # Arguments
+///
+/// * `callback` - The Python function to await.
+/// * `args` - Slice of positional arguments to pass to the function.
+/// * `kwargs` Python dict of keyword arguments to pass to the function.
+///
+/// Unlike `coro_to_fut`, this will ensure the callbacks
+/// are also called in the event loop's thread.
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyErr` if the callback failed to schedule or
+/// raised.
+///
+/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+/// the loop isn't active.
+pub fn await_py(
+    callback: &PyAny,
+    args: &[PyObject],
+    kwargs: Option<&PyDict>,
+) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+    crate::any::await_py::<Tokio>(callback, args, kwargs)
+}
+
+
+/// Call and await a Python function with no arguments
+///
+/// # Arguments
+///
+/// * `callback` - The Python function to await.
+///
+/// Unlike `coro_to_fut`, this will ensure the callbacks
+/// are also called in the event loop's thread.
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyErr` if the callback failed to schedule or
+/// raised.
+///
+/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+/// the loop isn't active.
+pub fn await_py0(callback: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+    await_py(callback, &[], None)
+}
+
+
+/// Call and await a Python function with only positional arguments.
+///
+/// # Arguments
+///
+/// * `callback` - The Python function to await.
+/// * `args` - Slice of positional arguments to pass to the function.
+///
+/// Unlike `coro_to_fut`, this will ensure the callbacks
+/// are also called in the event loop's thread.
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyErr` if the callback failed to schedule or
+/// raised.
+///
+/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+/// the loop isn't active.
+pub fn await_py1(
+    callback: &PyAny,
+    args: &[PyObject],
+) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+    await_py(callback, args, None)
+}
+
 
 /// Convert a Rust future into a Python coroutine.
 ///

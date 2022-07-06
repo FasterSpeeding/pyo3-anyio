@@ -62,12 +62,12 @@ fn import_sys_modules(py: Python) -> PyResult<&PyAny> {
 }
 
 #[pyo3::pyclass]
-pub(crate) struct WrapCall {
+pub(crate) struct ContextWrap {
     callback: PyObject,
     context: Option<PyObject>,
 }
 
-impl WrapCall {
+impl ContextWrap {
     fn py(context: Option<&PyAny>, callback: &PyAny) -> PyObject {
         let py = callback.py();
         Self {
@@ -79,7 +79,7 @@ impl WrapCall {
 }
 
 #[pyo3::pymethods]
-impl WrapCall {
+impl ContextWrap {
     #[args(callback, args, kwargs = "None")]
     fn __call__(&self, py: Python, mut args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         if let Some(context) = self.context.as_ref() {

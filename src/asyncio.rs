@@ -32,10 +32,10 @@ use once_cell::sync::OnceCell as OnceLock;
 use pyo3::conversion::AsPyPointer;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::types::{PyDict, PyTuple};
-use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python, ToPyObject};
+use pyo3::{IntoPy, Py, PyAny, PyObject, PyResult, Python, ToPyObject};
 
 use crate::traits::{BoxedFuture, PyLoop};
-use crate::WrapCall;
+use crate::ContextWrap;
 
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
 static ASYNCIO: OnceLock<PyObject> = OnceLock::new();
@@ -67,12 +67,16 @@ impl AsyncioHook {
 #[pyo3::pyclass]
 struct CreateEvent {
     context: Option<PyObject>,
+    args: Option<Vec<PyObject>>,
+    kwargs: Option<Py<PyDict>>,
 }
 
 impl CreateEvent {
-    fn py(py: Python, context: Option<&PyAny>) -> PyObject {
+    fn py(py: Python, context: Option<&PyAny>, args: Option<&[PyObject]>, kwargs: Option<&PyDict>) -> PyObject {
         Self {
             context: context.map(|value| value.to_object(py)),
+            args: args.map(std::convert::Into::into),
+            kwargs: kwargs.map(|value| value.into_py(py)),
         }
         .into_py(py)
     }
@@ -80,11 +84,33 @@ impl CreateEvent {
 
 #[pyo3::pymethods]
 impl CreateEvent {
-    fn __call__(&self, py: Python, event_loop: &PyAny, awaitable: &PyAny, one_shot: &PyAny) -> PyResult<()> {
-        let task = if let Some(context) = self.context.as_ref() {
-            context.call_method1(py, "run", (event_loop.getattr("create_task")?, awaitable))?
+    fn __call__(
+        &mut self,
+        py: Python,
+        event_loop: &PyAny,
+        mut callback_or_coro: PyObject,
+        one_shot: &PyAny,
+    ) -> PyResult<()> {
+        // If args is Some then `callback_or_coro` is a callback, otherwise its a
+        // coroutine.
+        let context = self.context.take();
+        if let Some(mut args) = self.args.take() {
+            let kwargs = self.kwargs.take().map(|value| value.into_ref(py));
+
+            if let Some(ref context) = context {
+                args.insert(0, callback_or_coro);
+                callback_or_coro = context.call_method(py, "run", PyTuple::new(py, args), kwargs)?;
+            } else {
+                callback_or_coro = callback_or_coro.call(py, PyTuple::new(py, args), kwargs)?;
+            };
+        }
+
+        let task = if let Some(context) = context {
+            context.call_method1(py, "run", (event_loop.getattr("create_task")?, callback_or_coro))?
         } else {
-            event_loop.call_method1("create_task", (awaitable,))?.to_object(py)
+            event_loop
+                .call_method1("create_task", (callback_or_coro,))?
+                .to_object(py)
         };
 
         task.call_method1(py, "add_done_callback", (one_shot,))?;
@@ -94,6 +120,7 @@ impl CreateEvent {
         Ok(())
     }
 }
+
 
 /// Reference to the current Asyncio event loop.
 #[derive(Clone)]
@@ -120,9 +147,45 @@ impl Asyncio {
             Err(err) => Err(err),
         }
     }
+
+    pub(self) fn _coro_to_fut(
+        &self,
+        context: Option<&PyAny>,
+        callback_or_coro: &PyAny,
+        args: Option<&[PyObject]>,
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+        let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
+        let py = callback_or_coro.py();
+        let one_shot = AsyncioHook { sender }.into_py(py);
+
+        self.call_soon(
+            None,
+            CreateEvent::py(py, context, args, kwargs).as_ref(py),
+            &[
+                self.event_loop.clone_ref(py),
+                callback_or_coro.to_object(py),
+                one_shot.getattr(py, "callback").unwrap(),
+            ],
+            None,
+        )?;
+
+        Ok(Box::pin(async move { receiver.await.unwrap() }))
+    }
 }
 
+
 impl PyLoop for Asyncio {
+    fn await_py(
+        &self,
+        context: Option<&PyAny>,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+        self._coro_to_fut(context, callback, Some(args), kwargs)
+    }
+
     fn call_soon(
         &self,
         context: Option<&PyAny>,
@@ -138,7 +201,7 @@ impl PyLoop for Asyncio {
         self.event_loop.call_method1(
             callback.py(),
             "call_soon_threadsafe",
-            (WrapCall::py(context, callback), PyTuple::new(py, args), kwargs),
+            (ContextWrap::py(context, callback), PyTuple::new(py, args), kwargs),
         )?;
         Ok(())
     }
@@ -151,27 +214,21 @@ impl PyLoop for Asyncio {
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
         let py = callback.py();
-        self.call_soon1(context, import_asyncio(py)?.getattr("create_task")?, &[
-            WrapCall::py(context, callback),
-            PyTuple::new(py, args).to_object(py),
-            kwargs.to_object(py),
-        ])?;
+        self.call_soon(
+            context,
+            import_asyncio(py)?.getattr("create_task")?,
+            &[
+                ContextWrap::py(context, callback),
+                PyTuple::new(py, args).to_object(py),
+                kwargs.to_object(py),
+            ],
+            None,
+        )?;
         Ok(())
     }
 
     fn coro_to_fut(&self, context: Option<&PyAny>, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
-        let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
-        let py = coroutine.py();
-        let one_shot = AsyncioHook { sender }.into_py(py);
-
-        let py = coroutine.py();
-        self.call_soon1(None, CreateEvent::py(py, context).as_ref(py), &[
-            self.event_loop.clone_ref(py),
-            coroutine.to_object(py),
-            one_shot.getattr(py, "callback").unwrap(),
-        ])?;
-
-        Ok(Box::pin(async move { receiver.await.unwrap() }))
+        self._coro_to_fut(context, coroutine, None, None)
     }
 
     fn clone_box(&self) -> Box<dyn PyLoop> {

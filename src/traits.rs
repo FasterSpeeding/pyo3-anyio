@@ -75,6 +75,31 @@ pub trait RustRuntime {
 
 /// Reference to the running Python event loop.
 pub trait PyLoop: Send + Sync {
+    /// Call and await a Python function.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The Python `contextvar` context to call this function in,
+    ///   if applicable.
+    /// * `callback` - The Python function to await.
+    /// * `args` - Slice of positional arguments to pass to the function.
+    /// * `kwargs` Python dict of keyword arguments to pass to the function.
+    ///
+    /// Unlike `coro_to_fut`, this will ensure the callbacks
+    /// are also called in the event loop's thread.
+    ///
+    /// # Errors
+    /// raised.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
+    fn await_py(
+        &self,
+        context: Option<&PyAny>,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<BoxedFuture<PyResult<PyObject>>>;
     /// Call a Python function soon in this event loop.
     ///
     /// # Arguments
@@ -98,41 +123,6 @@ pub trait PyLoop: Send + Sync {
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
-    /// Call a Python function soon (with no arguments) in this event loop.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The Python `contextvar` context to call this function in,
-    ///   if applicable.
-    /// * `callback` - The function to call.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
-    ///
-    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
-    /// the loop isn't active.
-    fn call_soon0(&self, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
-        self.call_soon(context, callback, &[], None)
-    }
-    /// Call a Python function soon (with only positional arguments) in this
-    /// event loop.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The Python `contextvar` context to call this function in,
-    ///   if applicable.
-    /// * `callback` - The function to call.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
-    ///
-    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
-    /// the loop isn't active.
-    fn call_soon1(&self, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
-        self.call_soon(context, callback, args, None)
-    }
     /// Call an async Python function soon in this event loop.
     ///
     /// # Arguments
@@ -155,45 +145,6 @@ pub trait PyLoop: Send + Sync {
         args: &[PyObject],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
-    /// Call an async Python function soon (with no arguments) in this event
-    /// loop.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The Python `contextvar` context to call this function in,
-    ///   if applicable.
-    /// * `callback` - The function to call.
-    /// * `args` - Slice of positional arguments to pass to the function.
-    /// * `kwargs` Python dict of keyword arguments to pass to the function.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
-    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
-    /// the loop isn't active.
-    fn call_soon_async0(&self, context: Option<&PyAny>, callback: &PyAny) -> PyResult<()> {
-        self.call_soon_async(context, callback, &[], None)
-    }
-    /// Call an async Python function soon (with only positional arguments) in
-    /// this event loop.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The Python `contextvar` context to call this function in,
-    ///   if applicable.
-    /// * `callback` - The function to call.
-    /// * `args` - Slice of positional arguments to pass to the function.
-    /// * `kwargs` Python dict of keyword arguments to pass to the function.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
-    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
-    /// the loop isn't active.
-    fn call_soon_async1(&self, context: Option<&PyAny>, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
-        self.call_soon_async(context, callback, args, None)
-    }
-
     /// Convert a Python coroutine to a future.
     ///
     /// This will spawn the coroutine as a task in this event loop.
@@ -206,7 +157,8 @@ pub trait PyLoop: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    /// Returns a `pyo3::PyErr` if this failed to schedule the coroutine or the
+    /// coroutine raised.
     ///
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.

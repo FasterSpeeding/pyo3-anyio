@@ -169,6 +169,79 @@ impl TaskLocals {
         self.context.as_ref().map(|value| value.as_ref(py))
     }
 
+    /// Call and await a Python function.
+    ///
+    /// # Arguments
+    ///
+    /// * `callback` - The Python function to await.
+    /// * `args` - Slice of positional arguments to pass to the function.
+    /// * `kwargs` Python dict of keyword arguments to pass to the function.
+    ///
+    /// Unlike `coro_to_fut`, this will ensure the callbacks
+    /// are also called in the event loop's thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if the callback failed to schedule or
+    /// raised.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
+    pub fn await_py(
+        &self,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+        self.py_loop
+            .await_py(self._context_ref(callback.py()), callback, args, kwargs)
+    }
+
+    /// Call and await a Python function with no arguments in this event loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `callback` - The Python function to await.
+    ///
+    /// Unlike `coro_to_fut`, this will ensure the callbacks
+    /// are also called in the event loop's thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if the callback failed to schedule or
+    /// raised.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
+    pub fn await_py0(&self, callback: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+        self.await_py(callback, &[], None)
+    }
+
+    /// Call and await a Python function with only positional arguments in this
+    /// event loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `callback` - The Python function to await.
+    ///
+    /// Unlike `coro_to_fut`, this will ensure the callbacks
+    /// are also called in the event loop's thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `pyo3::PyErr` if the callback failed to schedule or
+    /// raised.
+    ///
+    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+    /// the loop isn't active.
+    pub fn await_py1(
+        &self,
+        callback: &PyAny,
+        args: &[PyObject],
+    ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+        self.await_py(callback, args, None)
+    }
+
     /// Call a Python function soon in this event loop.
     ///
     /// # Arguments
@@ -287,7 +360,8 @@ impl TaskLocals {
     ///
     /// # Errors
     ///
-    /// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+    /// Returns a `pyo3::PyErr` if this failed to schedule the coroutine or the
+    /// coroutine raised.
     ///
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
@@ -295,6 +369,37 @@ impl TaskLocals {
         let py = coroutine.py();
         self.py_loop.coro_to_fut(self._context_ref(py), coroutine)
     }
+}
+
+/// Call and await a Python function.
+///
+/// # Arguments
+///
+/// * `callback` - The Python function to await.
+/// * `args` - Slice of positional arguments to pass to the function.
+/// * `kwargs` Python dict of keyword arguments to pass to the function.
+///
+/// Unlike `coro_to_fut`, this will ensure the callbacks
+/// are also called in the event loop's thread.
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyErr` if the callback failed to schedule or
+/// raised.
+///
+/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+/// the loop isn't active.
+pub fn await_py<R>(
+    callback: &PyAny,
+    args: &[PyObject],
+    kwargs: Option<&PyDict>,
+) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static>
+where
+    R: RustRuntime, {
+    // TODO: handle when this is None
+    R::get_locals_py(callback.py())
+        .unwrap()
+        .await_py(callback, args, kwargs)
 }
 
 /// Convert a `!Send` Rust future into a Python coroutine.
@@ -368,6 +473,7 @@ where
     Ok(channel)
 }
 
+
 /// Convert a Python coroutine to a Rust future.
 ///
 /// # Arguments
@@ -376,7 +482,8 @@ where
 ///
 /// # Errors
 ///
-/// Returns a `pyo3::PyErr` if this failed to schedule the callback.
+/// Returns a `pyo3::PyErr` if this failed to schedule the coroutine or the
+/// coroutine raised.
 ///
 /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if the
 /// loop isn't active.

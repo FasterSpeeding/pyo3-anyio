@@ -34,11 +34,12 @@ use pyo3::types::{IntoPyDict, PyDict, PyTuple};
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
 
 use crate::traits::{BoxedFuture, PyLoop};
-use crate::WrapCall;
+use crate::ContextWrap;
 
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
 static TRIO_LOW: OnceLock<PyObject> = OnceLock::new();
-static WRAP_CORO: OnceLock<PyObject> = OnceLock::new();
+static WRAP_FUNC: OnceLock<PyObject> = OnceLock::new();
+
 
 fn import_trio_low(py: Python) -> PyResult<&PyAny> {
     TRIO_LOW
@@ -47,15 +48,19 @@ fn import_trio_low(py: Python) -> PyResult<&PyAny> {
 }
 
 
-fn wrap_coro(py: Python) -> &PyAny {
-    WRAP_CORO
+fn wrap_func(py: Python) -> &PyAny {
+    WRAP_FUNC
         .get_or_init(|| {
             let globals = PyDict::new(py);
             py.run(
                 r#"
-async def wrap_coro(coro, one_shot, /):
+async def wrap_func(coro, one_shot, args, kwargs /):
     try:
-        result = await coro
+        if kwargs:
+            result = await coro(*args, **kwargs)
+
+        else:
+            result = await coro(*args)
 
     except BaseException as exc:
         one_shot.set_exception(exc)
@@ -68,7 +73,7 @@ async def wrap_coro(coro, one_shot, /):
             )
             .unwrap();
 
-            globals.get_item("wrap_coro").unwrap().to_object(py)
+            globals.get_item("wrap_func").unwrap().to_object(py)
         })
         .as_ref(py)
 }
@@ -89,6 +94,18 @@ impl TrioHook {
     #[args(value, "/")]
     fn set_exception(&mut self, value: &PyBaseException) {
         self.sender.send(Err(PyErr::from_value(value))).unwrap();
+    }
+}
+
+#[pyo3::pyclass]
+struct WrapCoro {
+    coroutine: PyObject,
+}
+
+#[pyo3::pymethods]
+impl WrapCoro {
+    fn __call__<'p>(&'p self, py: Python<'p>) -> &'p PyAny {
+        self.coroutine.as_ref(py)
     }
 }
 
@@ -124,6 +141,33 @@ impl Trio {
 
 
 impl PyLoop for Trio {
+    fn await_py(
+        &self,
+        context: Option<&PyAny>,
+        callback: &PyAny,
+        args: &[PyObject],
+        kwargs: Option<&PyDict>,
+    ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
+        let py = callback.py();
+        let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
+        let one_shot = TrioHook { sender }.into_py(py);
+
+        self.call_soon(
+            None,
+            import_trio_low(py)?.getattr("spawn_system_task")?,
+            &[
+                wrap_func(py).to_object(py),
+                callback.to_object(py),
+                one_shot,
+                PyTuple::new(py, args).to_object(py),
+                kwargs.into_py(py),
+            ],
+            Some([("context", context)].into_py_dict(py)),
+        )?;
+
+        Ok(Box::pin(async move { receiver.await.unwrap() }))
+    }
+
     fn call_soon(
         &self,
         context: Option<&PyAny>,
@@ -135,7 +179,7 @@ impl PyLoop for Trio {
             callback.py(),
             "run_sync_soon",
             (
-                WrapCall::py(context, callback),
+                ContextWrap::py(context, callback),
                 PyTuple::new(callback.py(), args),
                 kwargs,
             ),
@@ -152,7 +196,7 @@ impl PyLoop for Trio {
     ) -> PyResult<()> {
         let py = callback.py();
         let args = &[&[callback.to_object(py)], args].concat();
-        let wrapped = WrapCall::py(None, import_trio_low(py)?.getattr("spawn_system_task")?);
+        let wrapped = ContextWrap::py(None, import_trio_low(py)?.getattr("spawn_system_task")?);
         self.call_soon(
             None,
             wrapped.as_ref(py),
@@ -165,17 +209,10 @@ impl PyLoop for Trio {
 
     fn coro_to_fut(&self, context: Option<&PyAny>, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         let py = coroutine.py();
-        let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
-        let one_shot = TrioHook { sender }.into_py(py);
-
-        self.call_soon(
-            None,
-            import_trio_low(py)?.getattr("spawn_system_task")?,
-            &[wrap_coro(py).to_object(py), coroutine.to_object(py), one_shot],
-            Some([("context", context)].into_py_dict(py)),
-        )?;
-
-        Ok(Box::pin(async move { receiver.await.unwrap() }))
+        let callback = WrapCoro {
+            coroutine: coroutine.to_object(coroutine.py()),
+        };
+        self.await_py(context, callback.into_py(py).as_ref(py), &[], None)
     }
 
     fn clone_box(&self) -> Box<dyn PyLoop> {
