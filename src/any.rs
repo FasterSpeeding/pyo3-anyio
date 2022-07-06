@@ -76,7 +76,8 @@ class OneShotChannel:
             raise RuntimeError("Channel already set")
 
         self._value = value
-        self._channel.set()
+        if self._channel is not None:
+            self._channel.set()
 
     def set_exception(self, exception, /):
         if self._value is not _SINGLETON:
