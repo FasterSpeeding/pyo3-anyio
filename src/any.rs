@@ -30,7 +30,6 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 //! Functions and structs used for interacting with any Rust runtime.
-use std::cell::RefCell;
 use std::future::Future;
 
 use once_cell::sync::OnceCell as OnceLock;
@@ -533,20 +532,21 @@ struct Runner {
     /// TODO: Switch to using a trait alias to solve this complex type issue
     /// once https://github.com/rust-lang/rust/issues/41517 is done.
     #[allow(clippy::type_complexity)]
-    callback: RefCell<Option<Box<dyn FnOnce(Python) -> PyResult<PyObject> + Send>>>,
+    callback: Option<Box<dyn FnOnce(Python) -> PyResult<PyObject> + Send>>,
 }
 
 impl Runner {
     fn new(callback: impl FnOnce(Python) -> PyResult<PyObject> + Send + 'static) -> Self {
         Self {
-            callback: RefCell::new(Some(Box::new(callback))),
+            callback: Some(Box::new(callback)),
         }
     }
 }
 
 #[pyo3::pymethods]
 impl Runner {
-    fn __call__(&self, py: Python) -> PyResult<PyObject> {
-        self.callback.replace(None).unwrap()(py)
+    fn __call__(&mut self, py: Python) -> PyResult<PyObject> {
+        //  This should only ever be called once.
+        self.callback.take().unwrap()(py)
     }
 }
