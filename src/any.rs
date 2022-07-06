@@ -257,8 +257,8 @@ impl TaskLocals {
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
     pub fn call_soon(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
-        let py = callback.py();
-        self.py_loop.call_soon(self._context_ref(py), callback, args, kwargs)
+        self.py_loop
+            .call_soon(self._context_ref(callback.py()), callback, args, kwargs)
     }
 
     /// Call a Python function soon (with no arguments) in this event loop.
@@ -531,8 +531,9 @@ where
 
 #[pyo3::pyclass]
 struct Runner {
-    /// Switch to using a trait alias to solve this complex type issue once
-    /// https://github.com/rust-lang/rust/issues/41517 is done.
+    /// TODO: Switch to using a trait alias to solve this complex type issue
+    /// once https://github.com/rust-lang/rust/issues/41517 is done.
+    #[allow(clippy::type_complexity)]
     callback: RefCell<Option<Box<dyn FnOnce(Python) -> PyResult<PyObject> + Send>>>,
 }
 
