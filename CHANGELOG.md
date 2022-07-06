@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `await_py` functions to `any`, `tokio`, `PyLoop` and `ThreadLocals` for calling a
   python function in the event loop's thread then awaiting its result.
 - `run` functions for starting the Python event loop with a Rust future.
+- `get_locals_py` and `scope(_local)` functions to `pyo3_anyio::tokio`.
 
 ### Changed
 - `tokio::fut_into_coro_with_locals`, `tokio::local_fut_into_coro_with_locals`,
