@@ -223,6 +223,7 @@ impl TaskLocals {
     /// # Arguments
     ///
     /// * `callback` - The Python function to await.
+    /// * `args` - Slice of positional arguments to pass to the function.
     ///
     /// Unlike `coro_to_fut`, this will ensure the callbacks
     /// are also called in the event loop's thread.
