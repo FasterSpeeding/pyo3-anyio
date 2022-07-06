@@ -66,7 +66,11 @@ impl crate::traits::RustRuntime for Tokio {
         tokio::task::spawn_local(fut)
     }
 
-    fn get_locals(py: Python) -> Option<TaskLocals> {
+    fn get_locals() -> Option<TaskLocals> {
+        LOCALS.try_with(TaskLocals::clone).ok()
+    }
+
+    fn get_locals_py(py: Python) -> Option<TaskLocals> {
         LOCALS.try_with(|value| value.clone_py(py)).ok()
     }
 

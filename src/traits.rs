@@ -49,7 +49,13 @@ pub trait RustRuntime {
     type JoinHandle: Future<Output = Result<(), Self::JoinError>> + Send;
 
     /// Get the current task's set locals.
-    fn get_locals(py: Python) -> Option<TaskLocals>;
+    fn get_locals() -> Option<TaskLocals>;
+
+    /// Get the current task's set locals.
+    ///
+    /// This should be preferred over `std::clone::Clone` if you are already
+    /// holding the GIL.
+    fn get_locals_py(py: Python) -> Option<TaskLocals>;
 
     /// Spawn a future on this runtime.
     fn spawn(fut: impl Future<Output = ()> + Send + 'static) -> Self::JoinHandle;

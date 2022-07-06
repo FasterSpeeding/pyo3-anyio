@@ -384,7 +384,7 @@ pub fn coro_to_fut<R>(coroutine: &PyAny) -> PyResult<impl Future<Output = PyResu
 where
     R: RustRuntime, {
     // TODO: handle when this is None
-    R::get_locals(coroutine.py()).unwrap().coro_to_fut(coroutine)
+    R::get_locals_py(coroutine.py()).unwrap().coro_to_fut(coroutine)
 }
 
 /// Run the given future in an asynchronous Python event loop.
