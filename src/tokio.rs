@@ -34,7 +34,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use once_cell::sync::Lazy;
+use once_cell::sync::Lazy as LazyLock;
+use pyo3::types::PyDict;
 use pyo3::{IntoPy, PyAny, PyObject, PyResult, Python};
 
 use crate::any::TaskLocals;
@@ -46,7 +47,7 @@ tokio::task_local! {
 
 
 // TODO: switch to std::sync::LazyLock once https://github.com/rust-lang/rust/issues/74465 is done.
-static EXECUTOR: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
+static EXECUTOR: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     let mut builder = tokio::runtime::Builder::new_multi_thread();
     builder.enable_all();
     builder.build().expect("Failed to start executor")
@@ -66,7 +67,11 @@ impl crate::traits::RustRuntime for Tokio {
         tokio::task::spawn_local(fut)
     }
 
-    fn get_locals(py: Python) -> Option<TaskLocals> {
+    fn get_locals() -> Option<TaskLocals> {
+        LOCALS.try_with(TaskLocals::clone).ok()
+    }
+
+    fn get_locals_py(py: Python) -> Option<TaskLocals> {
         LOCALS.try_with(|value| value.clone_py(py)).ok()
     }
 
@@ -82,6 +87,79 @@ impl crate::traits::RustRuntime for Tokio {
     }
 }
 
+/// Call and await a Python function.
+///
+/// # Arguments
+///
+/// * `callback` - The Python function to await.
+/// * `args` - Slice of positional arguments to pass to the function.
+/// * `kwargs` Python dict of keyword arguments to pass to the function.
+///
+/// Unlike `coro_to_fut`, this will ensure the callbacks
+/// are also called in the event loop's thread.
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyErr` if the callback failed to schedule or
+/// raised.
+///
+/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+/// the loop isn't active.
+pub fn await_py(
+    callback: &PyAny,
+    args: &[PyObject],
+    kwargs: Option<&PyDict>,
+) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+    crate::any::await_py::<Tokio>(callback, args, kwargs)
+}
+
+
+/// Call and await a Python function with no arguments
+///
+/// # Arguments
+///
+/// * `callback` - The Python function to await.
+///
+/// Unlike `coro_to_fut`, this will ensure the callbacks
+/// are also called in the event loop's thread.
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyErr` if the callback failed to schedule or
+/// raised.
+///
+/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+/// the loop isn't active.
+pub fn await_py0(callback: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+    await_py(callback, &[], None)
+}
+
+
+/// Call and await a Python function with only positional arguments.
+///
+/// # Arguments
+///
+/// * `callback` - The Python function to await.
+/// * `args` - Slice of positional arguments to pass to the function.
+///
+/// Unlike `coro_to_fut`, this will ensure the callbacks
+/// are also called in the event loop's thread.
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyErr` if the callback failed to schedule or
+/// raised.
+///
+/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
+/// the loop isn't active.
+pub fn await_py1(
+    callback: &PyAny,
+    args: &[PyObject],
+) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
+    await_py(callback, args, None)
+}
+
+
 /// Convert a Rust future into a Python coroutine.
 ///
 /// # Arguments
@@ -92,11 +170,11 @@ impl crate::traits::RustRuntime for Tokio {
 /// # Errors
 ///
 /// Returns `pyo3::PyErr` if there is no running Python event loop in this
-/// thread.
+/// thread or if Anyio isn't installed in the current Python environment.
 pub fn fut_into_coro<T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    Ok(fut_into_coro_with_locals(py, TaskLocals::default(py)?, fut))
+    fut_into_coro_with_locals(py, TaskLocals::default(py)?, fut)
 }
 
 /// Convert a Rust future into a Python coroutine with the passed task locals.
@@ -106,11 +184,15 @@ where
 /// * `py` - The GIL token.
 /// * `locals` - The task locals to execute the future with, if applicable.
 /// * `fut` The future to convert into a Python coroutine.
+///
+/// # Errors
+///
+/// If Anyio isn't installed in the current Python environment.
 pub fn fut_into_coro_with_locals<T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + Send + 'static,
-) -> &PyAny
+) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
     crate::any::fut_into_coro::<Tokio, _>(py, locals, fut)
@@ -126,11 +208,11 @@ where
 /// # Errors
 ///
 /// Returns `pyo3::PyErr` if there is no running Python event loop in this
-/// thread.
+/// thread or if Anyio isn't installed in the current Python environment.
 pub fn local_fut_into_coro<T>(py: Python, fut: impl Future<Output = PyResult<T>> + 'static) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
-    Ok(local_fut_into_coro_with_locals(py, TaskLocals::default(py)?, fut))
+    local_fut_into_coro_with_locals(py, TaskLocals::default(py)?, fut)
 }
 
 /// Convert a `!Send` Rust future into a Python coroutine with the passed task
@@ -141,11 +223,15 @@ where
 /// * `py` - The GIL token.
 /// * `locals` - The task locals to execute the future with, if applicable.
 /// * `fut` The future to convert into a Python coroutine.
+///
+/// # Errors
+///
+/// If Anyio isn't installed in the current Python environment.
 pub fn local_fut_into_coro_with_locals<T>(
     py: Python,
     locals: TaskLocals,
     fut: impl Future<Output = PyResult<T>> + 'static,
-) -> &PyAny
+) -> PyResult<&PyAny>
 where
     T: IntoPy<PyObject>, {
     crate::any::local_fut_into_coro::<Tokio, _>(py, locals, fut)
@@ -165,4 +251,25 @@ where
 /// the loop isn't active.
 pub fn coro_to_fut(coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     crate::any::coro_to_fut::<Tokio>(coroutine)
+}
+
+/// Run the given future in an asynchronous Python event loop.
+///
+/// # Arguments
+///
+/// * `py` - The GIL token.
+/// * `fut` - The future to run in an asynchronous Python event loop.
+/// * `backend` - The Python async backend to run this in. This may be either
+///   "asyncio" or "trio".
+///
+/// # Errors
+///
+/// Returns a `pyo3::PyError` if this failed to start the event loop.
+///
+/// This may indicate that an invalid value was passed for `backend` or that an
+/// event loop is already active in the current thread.
+pub fn run<T>(py: Python, fut: impl Future<Output = PyResult<T>> + Send + 'static, backend: &str) -> PyResult<T>
+where
+    T: Send + Sync + 'static, {
+    crate::any::run::<Tokio, T>(py, fut, backend)
 }
