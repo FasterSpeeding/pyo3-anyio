@@ -68,7 +68,7 @@ pub trait RustRuntime {
 }
 
 /// Reference to the running Python event loop.
-pub trait PyLoop: Send {
+pub trait PyLoop: Send + Sync {
     /// Call a Python function soon in this event loop.
     ///
     /// # Arguments
