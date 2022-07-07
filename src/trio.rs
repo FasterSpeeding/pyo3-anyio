@@ -54,7 +54,7 @@ fn wrap_func(py: Python) -> &PyAny {
             let globals = PyDict::new(py);
             py.run(
                 r#"
-async def wrap_func(coro, one_shot, args, kwargs /):
+async def wrap_func(coro, one_shot, args, kwargs, /):
     try:
         if kwargs:
             result = await coro(*args, **kwargs)
