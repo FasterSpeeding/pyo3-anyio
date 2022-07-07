@@ -24,5 +24,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PyLoop` `call_{}` and `coro_to_fut` methods + the relevant top level functions
   now consistently error if the Python event loop isn't running regardless of the loop.
 
-[Unreleased]: https://github.com/FasterSpeeding/Alluka/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/FasterSpeeding/Alluka/compare/v0.1.0...v0.2.0
+[Unreleased]: https://github.com/FasterSpeeding/pyo3-anyio/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/FasterSpeeding/pyo3-anyio/compare/v0.1.0...v0.2.0
