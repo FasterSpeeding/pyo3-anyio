@@ -95,7 +95,7 @@ class OneShotChannel:
 
             await self._channel.wait()
 
-        if self._exception:
+        if self._exception is not None:
             raise copy(self._exception)
 
         return self._value
