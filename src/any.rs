@@ -530,9 +530,6 @@ where
 
 #[pyo3::pyclass]
 struct Runner {
-    /// TODO: Switch to using a trait alias to solve this complex type issue
-    /// once https://github.com/rust-lang/rust/issues/41517 is done.
-    #[allow(clippy::type_complexity)]
     callback: Option<Box<dyn FnOnce(Python) -> PyResult<PyObject> + Send>>,
 }
 
