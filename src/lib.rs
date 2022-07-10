@@ -52,8 +52,14 @@ use crate::traits::PyLoop;
 pub use crate::trio::Trio;
 
 
+static NONE: OnceLock<PyObject> = OnceLock::new();
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
 static SYS_MODULES: OnceLock<PyObject> = OnceLock::new();
+
+
+pub(crate) fn import_none(py: Python) -> &PyAny {
+    NONE.get_or_init(|| py.None()).as_ref(py)
+}
 
 fn import_sys_modules(py: Python) -> PyResult<&PyAny> {
     SYS_MODULES
