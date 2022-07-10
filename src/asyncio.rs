@@ -39,11 +39,16 @@ use crate::ContextWrap;
 
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
 static ASYNCIO: OnceLock<PyObject> = OnceLock::new();
+static NONE: OnceLock<PyObject> = OnceLock::new();
 
 fn import_asyncio(py: Python) -> PyResult<&PyAny> {
     ASYNCIO
         .get_or_try_init(|| Ok(py.import("asyncio")?.to_object(py)))
         .map(|value| value.as_ref(py))
+}
+
+fn import_none(py: Python) -> &PyAny {
+    NONE.get_or_init(|| py.None()).as_ref(py)
 }
 
 
@@ -72,10 +77,11 @@ struct CreateEvent {
 }
 
 impl CreateEvent {
-    fn py(py: Python, context: Option<&PyAny>, args: Option<&[PyObject]>, kwargs: Option<&PyDict>) -> PyObject {
+    fn py(py: Python, context: Option<&PyAny>, args: Option<&[&PyAny]>, kwargs: Option<&PyDict>) -> PyObject {
         Self {
             context: context.map(|value| value.to_object(py)),
-            args: args.map(std::convert::Into::into),
+            // TODO: move away from this iter map call.
+            args: args.map(|value| value.iter().map(|value| value.to_object(py)).collect()),
             kwargs: kwargs.map(|value| value.into_py(py)),
         }
         .into_py(py)
@@ -152,7 +158,7 @@ impl Asyncio {
         &self,
         context: Option<&PyAny>,
         callback_or_coro: &PyAny,
-        args: Option<&[PyObject]>,
+        args: Option<&[&PyAny]>,
         kwargs: Option<&PyDict>,
     ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         let (sender, receiver) = async_oneshot::oneshot::<PyResult<PyObject>>();
@@ -163,9 +169,9 @@ impl Asyncio {
             None,
             CreateEvent::py(py, context, args, kwargs).as_ref(py),
             &[
-                self.event_loop.clone_ref(py),
-                callback_or_coro.to_object(py),
-                one_shot.getattr(py, "callback").unwrap(),
+                self.event_loop.as_ref(py),
+                callback_or_coro,
+                one_shot.getattr(py, "callback").unwrap().as_ref(py),
             ],
             None,
         )?;
@@ -179,7 +185,7 @@ impl PyLoop for Asyncio {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         self._coro_to_fut(context, callback, Some(args), kwargs)
@@ -189,7 +195,7 @@ impl PyLoop for Asyncio {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
         let py = callback.py();
@@ -209,7 +215,7 @@ impl PyLoop for Asyncio {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
         let py = callback.py();
@@ -217,9 +223,9 @@ impl PyLoop for Asyncio {
             context,
             import_asyncio(py)?.getattr("create_task")?,
             &[
-                ContextWrap::py(context, callback),
-                PyTuple::new(py, args).to_object(py),
-                kwargs.to_object(py),
+                ContextWrap::py(context, callback).as_ref(py),
+                PyTuple::new(py, args),
+                kwargs.map_or_else(|| import_none(py), PyDict::as_ref),
             ],
             None,
         )?;

@@ -37,9 +37,14 @@ use crate::traits::{BoxedFuture, PyLoop};
 use crate::ContextWrap;
 
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
+static NONE: OnceLock<PyObject> = OnceLock::new();
 static TRIO_LOW: OnceLock<PyObject> = OnceLock::new();
 static WRAP_FUNC: OnceLock<PyObject> = OnceLock::new();
 
+
+fn import_none(py: Python) -> &PyAny {
+    NONE.get_or_init(|| py.None()).as_ref(py)
+}
 
 fn import_trio_low(py: Python) -> PyResult<&PyAny> {
     TRIO_LOW
@@ -145,7 +150,7 @@ impl PyLoop for Trio {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
         let py = callback.py();
@@ -156,11 +161,11 @@ impl PyLoop for Trio {
             None,
             import_trio_low(py)?.getattr("spawn_system_task")?,
             &[
-                wrap_func(py).to_object(py),
-                callback.to_object(py),
-                one_shot,
-                PyTuple::new(py, args).to_object(py),
-                kwargs.into_py(py),
+                wrap_func(py),
+                callback,
+                one_shot.as_ref(py),
+                PyTuple::new(py, args),
+                kwargs.map_or_else(|| import_none(py), PyDict::as_ref),
             ],
             Some([("context", context)].into_py_dict(py)),
         )?;
@@ -172,7 +177,7 @@ impl PyLoop for Trio {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
         self.token.call_method1(
@@ -191,16 +196,19 @@ impl PyLoop for Trio {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()> {
         let py = callback.py();
-        let args = &[&[callback.to_object(py)], args].concat();
+        let args = &[&[callback], args].concat();
         let wrapped = ContextWrap::py(None, import_trio_low(py)?.getattr("spawn_system_task")?);
         self.call_soon(
             None,
             wrapped.as_ref(py),
-            &[PyTuple::new(py, args).to_object(py), kwargs.to_object(py)],
+            &[
+                PyTuple::new(py, args),
+                kwargs.map_or_else(|| import_none(py), PyDict::as_ref),
+            ],
             Some([("context", context)].into_py_dict(py)),
         )?;
 

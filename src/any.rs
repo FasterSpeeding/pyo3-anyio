@@ -190,7 +190,7 @@ impl TaskLocals {
     pub fn await_py(
         &self,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
         self.py_loop
@@ -238,7 +238,7 @@ impl TaskLocals {
     pub fn await_py1(
         &self,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
     ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
         self.await_py(callback, args, None)
     }
@@ -257,7 +257,7 @@ impl TaskLocals {
     ///
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
-    pub fn call_soon(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
+    pub fn call_soon(&self, callback: &PyAny, args: &[&PyAny], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
             .call_soon(self._context_ref(callback.py()), callback, args, kwargs)
     }
@@ -292,7 +292,7 @@ impl TaskLocals {
     ///
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
-    pub fn call_soon1(&self, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+    pub fn call_soon1(&self, callback: &PyAny, args: &[&PyAny]) -> PyResult<()> {
         self.call_soon(callback, args, None)
     }
 
@@ -311,7 +311,7 @@ impl TaskLocals {
     ///
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
-    pub fn call_soon_async(&self, callback: &PyAny, args: &[PyObject], kwargs: Option<&PyDict>) -> PyResult<()> {
+    pub fn call_soon_async(&self, callback: &PyAny, args: &[&PyAny], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
             .call_soon_async(self._context_ref(callback.py()), callback, args, kwargs)
     }
@@ -346,7 +346,7 @@ impl TaskLocals {
     ///
     /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
     /// the loop isn't active.
-    pub fn call_soon_async1(&self, callback: &PyAny, args: &[PyObject]) -> PyResult<()> {
+    pub fn call_soon_async1(&self, callback: &PyAny, args: &[&PyAny]) -> PyResult<()> {
         self.call_soon_async(callback, args, None)
     }
 
@@ -390,7 +390,7 @@ impl TaskLocals {
 /// the loop isn't active.
 pub fn await_py<R>(
     callback: &PyAny,
-    args: &[PyObject],
+    args: &[&PyAny],
     kwargs: Option<&PyDict>,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static>
 where
@@ -425,9 +425,11 @@ where
         let result = fut.await;
         Python::with_gil(|py| {
             match result {
-                Ok(value) => locals.call_soon1(set_value.as_ref(py), &[value.into_py(py)]).unwrap(),
+                Ok(value) => locals
+                    .call_soon1(set_value.as_ref(py), &[value.into_py(py).as_ref(py)])
+                    .unwrap(),
                 Err(err) => locals
-                    .call_soon1(set_exception.as_ref(py), &[err.to_object(py)])
+                    .call_soon1(set_exception.as_ref(py), &[err.to_object(py).as_ref(py)])
                     .unwrap(),
             };
         });
@@ -461,9 +463,11 @@ where
         let result = fut.await;
         Python::with_gil(|py| {
             match result {
-                Ok(value) => locals.call_soon1(set_value.as_ref(py), &[value.into_py(py)]).unwrap(),
+                Ok(value) => locals
+                    .call_soon1(set_value.as_ref(py), &[value.into_py(py).as_ref(py)])
+                    .unwrap(),
                 Err(err) => locals
-                    .call_soon1(set_exception.as_ref(py), &[err.to_object(py)])
+                    .call_soon1(set_exception.as_ref(py), &[err.to_object(py).as_ref(py)])
                     .unwrap(),
             };
         });
