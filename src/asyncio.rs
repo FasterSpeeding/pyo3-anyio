@@ -80,6 +80,7 @@ impl CreateEvent {
     fn py(py: Python, context: Option<&PyAny>, args: Option<&[&PyAny]>, kwargs: Option<&PyDict>) -> PyObject {
         Self {
             context: context.map(|value| value.to_object(py)),
+            // TODO: move away from this iter map call.
             args: args.map(|value| value.iter().map(|value| value.to_object(py)).collect()),
             kwargs: kwargs.map(|value| value.into_py(py)),
         }
