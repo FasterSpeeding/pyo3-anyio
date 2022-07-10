@@ -138,7 +138,7 @@ pub fn scope_local<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 
 /// the loop isn't active.
 pub fn await_py(
     callback: &PyAny,
-    args: &[PyObject],
+    args: &[&PyAny],
     kwargs: Option<&PyDict>,
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     crate::any::await_py::<Tokio>(callback, args, kwargs)
@@ -185,7 +185,7 @@ pub fn await_py0(callback: &PyAny) -> PyResult<impl Future<Output = PyResult<PyO
 /// the loop isn't active.
 pub fn await_py1(
     callback: &PyAny,
-    args: &[PyObject],
+    args: &[&PyAny],
 ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
     await_py(callback, args, None)
 }

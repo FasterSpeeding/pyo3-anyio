@@ -97,7 +97,7 @@ pub trait PyLoop: Send + Sync {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<BoxedFuture<PyResult<PyObject>>>;
     /// Call a Python function soon in this event loop.
@@ -120,7 +120,7 @@ pub trait PyLoop: Send + Sync {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
     /// Call an async Python function soon in this event loop.
@@ -142,7 +142,7 @@ pub trait PyLoop: Send + Sync {
         &self,
         context: Option<&PyAny>,
         callback: &PyAny,
-        args: &[PyObject],
+        args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
     /// Convert a Python coroutine to a future.
