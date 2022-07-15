@@ -37,14 +37,9 @@ use crate::traits::{BoxedFuture, PyLoop};
 use crate::ContextWrap;
 
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
-static NONE: OnceLock<PyObject> = OnceLock::new();
 static TRIO_LOW: OnceLock<PyObject> = OnceLock::new();
 static WRAP_FUNC: OnceLock<PyObject> = OnceLock::new();
 
-
-fn import_none(py: Python) -> &PyAny {
-    NONE.get_or_init(|| py.None()).as_ref(py)
-}
 
 fn import_trio_low(py: Python) -> PyResult<&PyAny> {
     TRIO_LOW
@@ -165,7 +160,7 @@ impl PyLoop for Trio {
                 callback,
                 one_shot.as_ref(py),
                 PyTuple::new(py, args),
-                kwargs.map_or_else(|| import_none(py), PyDict::as_ref),
+                kwargs.map_or_else(|| crate::import_none(py), PyDict::as_ref),
             ],
             Some([("context", context)].into_py_dict(py)),
         )?;
@@ -207,20 +202,12 @@ impl PyLoop for Trio {
             wrapped.as_ref(py),
             &[
                 PyTuple::new(py, args),
-                kwargs.map_or_else(|| import_none(py), PyDict::as_ref),
+                kwargs.map_or_else(|| crate::import_none(py), PyDict::as_ref),
             ],
             Some([("context", context)].into_py_dict(py)),
         )?;
 
         Ok(())
-    }
-
-    fn coro_to_fut(&self, context: Option<&PyAny>, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
-        let py = coroutine.py();
-        let callback = WrapCoro {
-            coroutine: coroutine.to_object(coroutine.py()),
-        };
-        self.await_py(context, callback.into_py(py).as_ref(py), &[], None)
     }
 
     fn clone_box(&self) -> Box<dyn PyLoop> {

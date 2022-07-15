@@ -126,9 +126,6 @@ pub fn scope_local<R>(locals: TaskLocals, fut: impl Future<Output = R> + Send + 
 /// * `args` - Slice of positional arguments to pass to the function.
 /// * `kwargs` Python dict of keyword arguments to pass to the function.
 ///
-/// Unlike `coro_to_fut`, this will ensure the callbacks
-/// are also called in the event loop's thread.
-///
 /// # Errors
 ///
 /// Returns a `pyo3::PyErr` if the callback failed to schedule or
@@ -151,9 +148,6 @@ pub fn await_py(
 ///
 /// * `callback` - The Python function to await.
 ///
-/// Unlike `coro_to_fut`, this will ensure the callbacks
-/// are also called in the event loop's thread.
-///
 /// # Errors
 ///
 /// Returns a `pyo3::PyErr` if the callback failed to schedule or
@@ -172,9 +166,6 @@ pub fn await_py0(callback: &PyAny) -> PyResult<impl Future<Output = PyResult<PyO
 ///
 /// * `callback` - The Python function to await.
 /// * `args` - Slice of positional arguments to pass to the function.
-///
-/// Unlike `coro_to_fut`, this will ensure the callbacks
-/// are also called in the event loop's thread.
 ///
 /// # Errors
 ///
@@ -266,22 +257,6 @@ pub fn local_fut_into_coro_with_locals<T>(
 where
     T: IntoPy<PyObject>, {
     crate::any::local_fut_into_coro::<Tokio, _>(py, locals, fut)
-}
-
-/// Convert a Python coroutine to a Rust future.
-///
-/// # Arguments
-///
-/// * `coroutine` - The coroutine convert.
-///
-/// # Errors
-///
-/// Returns a `pyo3::PyErr` if this failed to schedule the callback.
-///
-/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
-/// the loop isn't active.
-pub fn coro_to_fut(coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
-    crate::any::coro_to_fut::<Tokio>(coroutine)
 }
 
 /// Run the given future in an asynchronous Python event loop.

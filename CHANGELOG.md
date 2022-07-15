@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `await_py`, `call_soon` and `call_soon_async` now all take `&[&PyAny]` for `args`
   instead of `&[PyObject]` to better match `PyTuple.as_slice()`.
 
+### Removed
+- `coro_to_fut` as in testing this seemed to just introduce scoping issues,
+  (especially in the case of sync functions which run code then return a coroutine).
+
 ## [0.2.0]
 ### Added
 - `await_py` functions to `any`, `tokio`, `PyLoop` and `ThreadLocals` for calling a

@@ -85,9 +85,6 @@ pub trait PyLoop: Send + Sync {
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
     ///
-    /// Unlike `coro_to_fut`, this will ensure the callbacks
-    /// are also called in the event loop's thread.
-    ///
     /// # Errors
     /// raised.
     ///
@@ -145,25 +142,6 @@ pub trait PyLoop: Send + Sync {
         args: &[&PyAny],
         kwargs: Option<&PyDict>,
     ) -> PyResult<()>;
-    /// Convert a Python coroutine to a future.
-    ///
-    /// This will spawn the coroutine as a task in this event loop.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The Python `contextvar` context to await this coroutine
-    ///   in, if applicable.
-    /// * `coroutine` The Python coroutine to await.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `pyo3::PyErr` if this failed to schedule the coroutine or the
-    /// coroutine raised.
-    ///
-    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
-    /// the loop isn't active.
-    fn coro_to_fut(&self, context: Option<&PyAny>, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>>;
-
     #[doc(hidden)] // Internal method used to implement clone for Box<PyLoop>
     fn clone_box(&self) -> Box<dyn PyLoop>;
 }

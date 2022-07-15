@@ -36,7 +36,7 @@ use once_cell::sync::OnceCell as OnceLock;
 use pyo3::types::{IntoPyDict, PyDict};
 use pyo3::{IntoPy, PyAny, PyErr, PyObject, PyResult, Python, ToPyObject};
 
-use crate::traits::{BoxedFuture, PyLoop, RustRuntime};
+use crate::traits::{PyLoop, RustRuntime};
 
 // TODO: switch to std::sync::OnceLock once https://github.com/rust-lang/rust/issues/74465 is done.
 static ANYIO: OnceLock<PyObject> = OnceLock::new();
@@ -177,9 +177,6 @@ impl TaskLocals {
     /// * `args` - Slice of positional arguments to pass to the function.
     /// * `kwargs` Python dict of keyword arguments to pass to the function.
     ///
-    /// Unlike `coro_to_fut`, this will ensure the callbacks
-    /// are also called in the event loop's thread.
-    ///
     /// # Errors
     ///
     /// Returns a `pyo3::PyErr` if the callback failed to schedule or
@@ -203,9 +200,6 @@ impl TaskLocals {
     ///
     /// * `callback` - The Python function to await.
     ///
-    /// Unlike `coro_to_fut`, this will ensure the callbacks
-    /// are also called in the event loop's thread.
-    ///
     /// # Errors
     ///
     /// Returns a `pyo3::PyErr` if the callback failed to schedule or
@@ -224,9 +218,6 @@ impl TaskLocals {
     ///
     /// * `callback` - The Python function to await.
     /// * `args` - Slice of positional arguments to pass to the function.
-    ///
-    /// Unlike `coro_to_fut`, this will ensure the callbacks
-    /// are also called in the event loop's thread.
     ///
     /// # Errors
     ///
@@ -349,25 +340,6 @@ impl TaskLocals {
     pub fn call_soon_async1(&self, callback: &PyAny, args: &[&PyAny]) -> PyResult<()> {
         self.call_soon_async(callback, args, None)
     }
-
-    /// Convert a Python coroutine to a Rust future.
-    ///
-    /// This will spawn the coroutine as a task in this event loop.
-    ///
-    /// # Arguments
-    ///
-    /// * `coroutine` The Python coroutine to await.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `pyo3::PyErr` if this failed to schedule the coroutine or the
-    /// coroutine raised.
-    ///
-    /// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if
-    /// the loop isn't active.
-    pub fn coro_to_fut(&self, coroutine: &PyAny) -> PyResult<BoxedFuture<PyResult<PyObject>>> {
-        self.py_loop.coro_to_fut(self._context_ref(coroutine.py()), coroutine)
-    }
 }
 
 /// Call and await a Python function.
@@ -377,9 +349,6 @@ impl TaskLocals {
 /// * `callback` - The Python function to await.
 /// * `args` - Slice of positional arguments to pass to the function.
 /// * `kwargs` Python dict of keyword arguments to pass to the function.
-///
-/// Unlike `coro_to_fut`, this will ensure the callbacks
-/// are also called in the event loop's thread.
 ///
 /// # Errors
 ///
@@ -476,26 +445,6 @@ where
     Ok(channel)
 }
 
-
-/// Convert a Python coroutine to a Rust future.
-///
-/// # Arguments
-///
-/// * `coroutine` - The coroutine convert.
-///
-/// # Errors
-///
-/// Returns a `pyo3::PyErr` if this failed to schedule the coroutine or the
-/// coroutine raised.
-///
-/// The inner value of this will be a `pyo3::exceptions::PyRuntimeError` if the
-/// loop isn't active.
-pub fn coro_to_fut<R>(coroutine: &PyAny) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static>
-where
-    R: RustRuntime, {
-    // TODO: handle when this is None
-    R::get_locals_py(coroutine.py()).unwrap().coro_to_fut(coroutine)
-}
 
 /// Run the given future in an asynchronous Python event loop.
 ///
