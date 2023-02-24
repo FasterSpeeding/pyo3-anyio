@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-## [0.3.0]
+## [0.3.0] - 07-15-2022
 ### Changed
 - `await_py`, `call_soon` and `call_soon_async` now all take `&[&PyAny]` for `args`
   instead of `&[PyObject]` to better match `PyTuple.as_slice()`.
@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `coro_to_fut` as in testing this seemed to just introduce scoping issues,
   (especially in the case of sync functions which run code then return a coroutine).
 
-## [0.2.0]
+## [0.2.0] - 07-07-2022
 ### Added
 - `await_py` functions to `any`, `tokio`, `PyLoop` and `ThreadLocals` for calling a
   python function in the event loop's thread then awaiting its result.
