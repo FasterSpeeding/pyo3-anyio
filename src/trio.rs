@@ -53,7 +53,7 @@ fn wrap_func(py: Python) -> &PyAny {
         .get_or_init(|| {
             let globals = PyDict::new(py);
             py.run(
-                r#"
+                r"
 async def wrap_func(coro, one_shot, args, kwargs, /):
     try:
         if kwargs:
@@ -67,7 +67,7 @@ async def wrap_func(coro, one_shot, args, kwargs, /):
 
     else:
         one_shot.set(result)
-            "#,
+            ",
                 Some(globals),
                 None,
             )
