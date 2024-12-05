@@ -165,7 +165,7 @@ impl TaskLocals {
         }
     }
 
-    pub(self) fn _context_ref<'a>(&'a self, py: Python<'a>) -> Option<&'a PyAny> {
+    pub(self) fn context_ref<'a>(&'a self, py: Python<'a>) -> Option<&'a PyAny> {
         self.context.as_ref().map(|value| value.as_ref(py))
     }
 
@@ -191,7 +191,7 @@ impl TaskLocals {
         kwargs: Option<&PyDict>,
     ) -> PyResult<impl Future<Output = PyResult<PyObject>> + Send + 'static> {
         self.py_loop
-            .await_py(self._context_ref(callback.py()), callback, args, kwargs)
+            .await_py(self.context_ref(callback.py()), callback, args, kwargs)
     }
 
     /// Call and await a Python function with no arguments in this event loop.
@@ -250,7 +250,7 @@ impl TaskLocals {
     /// the loop isn't active.
     pub fn call_soon(&self, callback: &PyAny, args: &[&PyAny], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
-            .call_soon(self._context_ref(callback.py()), callback, args, kwargs)
+            .call_soon(self.context_ref(callback.py()), callback, args, kwargs)
     }
 
     /// Call a Python function soon (with no arguments) in this event loop.
@@ -304,7 +304,7 @@ impl TaskLocals {
     /// the loop isn't active.
     pub fn call_soon_async(&self, callback: &PyAny, args: &[&PyAny], kwargs: Option<&PyDict>) -> PyResult<()> {
         self.py_loop
-            .call_soon_async(self._context_ref(callback.py()), callback, args, kwargs)
+            .call_soon_async(self.context_ref(callback.py()), callback, args, kwargs)
     }
 
     /// Call an async Python function soon (with no arguments) in this event

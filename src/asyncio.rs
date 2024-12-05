@@ -95,7 +95,7 @@ impl CreateEvent {
 
         let coroutine = if let Some(context) = context {
             let args_ref = args.as_slice();
-            context.call_method("run", PyTuple::new(py, &[&[callback], args_ref].concat()), kwargs)?
+            context.call_method("run", PyTuple::new(py, [&[callback], args_ref].concat()), kwargs)?
         } else {
             callback.call(args, kwargs)?
         };
