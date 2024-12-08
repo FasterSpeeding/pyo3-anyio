@@ -86,12 +86,12 @@ struct TrioHook {
 
 #[pyo3::pymethods]
 impl TrioHook {
-    #[args(value, "/")]
+    #[pyo3(signature = (value, /))]
     fn set(&mut self, value: PyObject) {
         self.sender.send(Ok(value)).unwrap();
     }
 
-    #[args(value, "/")]
+    #[pyo3(signature = (value, /))]
     fn set_exception(&mut self, value: &PyBaseException) {
         self.sender.send(Err(PyErr::from_value(value))).unwrap();
     }
