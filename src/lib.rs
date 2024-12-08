@@ -86,7 +86,7 @@ impl ContextWrap {
 
 #[pyo3::pymethods]
 impl ContextWrap {
-    #[args(callback, args, kwargs = "None")]
+    #[pyo3(signature = (args, kwargs = None))]
     fn __call__(&self, py: Python, mut args: Vec<PyObject>, kwargs: Option<&PyDict>) -> PyResult<PyObject> {
         if let Some(context) = self.context.as_ref() {
             args.insert(0, self.callback.clone_ref(py));
