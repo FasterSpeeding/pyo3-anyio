@@ -5,7 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-## [0.3.0] - 07-15-2022
+## [0.3.1] - 2024-12-08
+### Changed
+- Bumped target Pyo3 version to `0.23.*`
+- Relaxed async-oneshot dependency to `0.5.*`
+- Relaxed once_cell dependency to `1.*`
+
+## [0.3.0] - 2022-15-07
 ### Changed
 - `await_py`, `call_soon` and `call_soon_async` now all take `&[&PyAny]` for `args`
   instead of `&[PyObject]` to better match `PyTuple.as_slice()`.
@@ -14,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `coro_to_fut` as in testing this seemed to just introduce scoping issues,
   (especially in the case of sync functions which run code then return a coroutine).
 
-## [0.2.0] - 07-07-2022
+## [0.2.0] - 2022-07-07
 ### Added
 - `await_py` functions to `any`, `tokio`, `PyLoop` and `ThreadLocals` for calling a
   python function in the event loop's thread then awaiting its result.
@@ -33,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PyLoop` `call_{}` and `coro_to_fut` methods + the relevant top level functions
   now consistently error if the Python event loop isn't running regardless of the loop.
 
-[Unreleased]: https://github.com/FasterSpeeding/pyo3-anyio/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/FasterSpeeding/pyo3-anyio/compare/v0.3.1...HEAD
+[0.3.0]: https://github.com/FasterSpeeding/pyo3-anyio/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/FasterSpeeding/pyo3-anyio/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/FasterSpeeding/pyo3-anyio/compare/v0.1.0...v0.2.0
