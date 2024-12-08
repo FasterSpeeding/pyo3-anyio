@@ -1,7 +1,7 @@
 [package]
 name = "pyo3-anyio"
 description = "PyO3 utility bindings for Anyio's event loop."
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 authors = ["Faster Speeding <lucina@lmbyrne.dev>"]
 categories = ["asynchronous", "development-tools::ffi"]
